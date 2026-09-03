@@ -25,46 +25,63 @@ def get_korean_font(size):
 font = get_korean_font(24)
 title_font = get_korean_font(38)
 
-# 데이터 객체
-player = pygame.Rect(400, 300, 30, 30)
-enemies = []
-bullets = []
-potions = []
-loot_items = []    # 전리품 리스트
-explosions = []    # 폭발 이펙트 리스트
+# 게임 전체 상태 Reset 함수
+def reset_game():
+    global player, enemies, bullets, potions, loot_items, explosions
+    global spawn_timer, shoot_timer, potion_timer
+    global max_hp, player_hp, hp_regen, pierce_count, bullet_count, shoot_interval, fire_directions
+    global has_explosion, explosion_radius, magnet_radius
+    global play_time, kill_count, kills_for_next_upgrade
+    global is_upgrading, is_game_over
 
-spawn_timer = 0
-shoot_timer = 0
-potion_timer = 0
+    player = pygame.Rect(400, 300, 30, 30)
+    enemies = []
+    bullets = []
+    potions = []
+    loot_items = []
+    explosions = []
 
-# 플레이어 능력치 & 기본 변수
-max_hp = 100
-player_hp = 100
-hp_regen = 0
-pierce_count = 1
-bullet_count = 1
-shoot_interval = 0.5
-fire_directions = 1
+    spawn_timer = 0
+    shoot_timer = 0
+    potion_timer = 0
 
-# 폭발 및 자석 속성
-has_explosion = False
-explosion_radius = 30.0    # 기본 플레이어 크기(30) 정도의 반경
-magnet_radius = 100.0       # 기본 전리품 흡수 범위
+    max_hp = 100
+    player_hp = 100
+    hp_regen = 0
+    pierce_count = 1
+    bullet_count = 1
+    shoot_interval = 0.5
+    fire_directions = 1
 
-play_time = 0.0
-kill_count = 0
-kills_for_next_upgrade = 20
+    has_explosion = False
+    explosion_radius = 30.0
+    magnet_radius = 100.0
 
-# 업그레이드 시스템 변수
-is_upgrading = False
+    play_time = 0.0
+    kill_count = 0
+    kills_for_next_upgrade = 20
+
+    is_upgrading = False
+    is_game_over = False
+
+# 언어 및 기본 상태 설정
+current_lang = 'KOR'
+lang_button_rect = pygame.Rect(700, 10, 80, 30)
 upgrade_options = []
 selected_option_index = 0
 
-# 언어 설정 변수
-current_lang = 'KOR'
-lang_button_rect = pygame.Rect(700, 10, 80, 30)
+reset_game()
 
-# 업그레이드 목록 함수 (조건부 선택지 생성을 위해 함수화)
+def add_kills_and_check_upgrade(amount):
+    global kill_count, kills_for_next_upgrade, is_upgrading, upgrade_options, selected_option_index
+    kill_count += amount
+    if kill_count >= kills_for_next_upgrade:
+        kills_for_next_upgrade *= 2
+        is_upgrading = True
+        avail = get_available_upgrades()
+        upgrade_options = random.sample(avail, min(3, len(avail)))
+        selected_option_index = 0
+
 def get_available_upgrades():
     upgrades = [
         {"id": 1, "text_kor": "1. 관통력 +1", "text_eng": "1. Pierce +1"},
@@ -75,14 +92,10 @@ def get_available_upgrades():
         {"id": 6, "text_kor": "6. 초당 체력회복 +1", "text_eng": "6. HP Regen +1"},
         {"id": 8, "text_kor": "8. 전리품 획득 범위 +10%", "text_eng": "8. Magnet Range +10%"}
     ]
-    
-    # 폭발 데미지가 없으면 폭발 데미지 추가 옵션 포함
     if not has_explosion:
         upgrades.append({"id": 7, "text_kor": "7. 폭발 데미지 추가", "text_eng": "7. Add Explosion Damage"})
     else:
-        # 폭발 데미지가 있을 때만 폭발 범위 증가 옵션 포함
         upgrades.append({"id": 9, "text_kor": "9. 폭발 범위 +20%", "text_eng": "9. Explosion Area +20%"})
-        
     return upgrades
 
 def apply_upgrade(upgrade_id):
@@ -105,9 +118,9 @@ def apply_upgrade(upgrade_id):
     elif upgrade_id == 7:
         has_explosion = True
     elif upgrade_id == 8:
-        magnet_radius *= 1.10  # 10% 증가
+        magnet_radius *= 1.10
     elif upgrade_id == 9:
-        explosion_radius *= 1.20 # 20% 증가
+        explosion_radius *= 1.20
 
 running = True
 while running:
@@ -122,7 +135,11 @@ while running:
             if lang_button_rect.collidepoint(event.pos):
                 current_lang = 'ENG' if current_lang == 'KOR' else 'KOR'
 
-        if is_upgrading and event.type == pygame.KEYDOWN:
+        if is_game_over and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_r:
+                reset_game()
+
+        if is_upgrading and not is_game_over and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
                 selected_option_index = (selected_option_index - 1) % len(upgrade_options)
             elif event.key == pygame.K_DOWN:
@@ -132,7 +149,31 @@ while running:
                 apply_upgrade(chosen_upgrade["id"])
                 is_upgrading = False
 
-    # 업그레이드 일시정지 창
+    # --- [Game Over 화면] ---
+    if is_game_over:
+        overlay = pygame.Surface((800, 600))
+        overlay.set_alpha(200)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+
+        go_title = "게임 오버" if current_lang == 'KOR' else "GAME OVER"
+        go_sub = "재시작하려면 'R' 키를 누르세요" if current_lang == 'KOR' else "Press 'R' to Restart"
+
+        go_text = title_font.render(go_title, True, (255, 50, 50))
+        sub_text = font.render(go_sub, True, (255, 255, 255))
+
+        screen.blit(go_text, (400 - go_text.get_width() // 2, 220))
+        screen.blit(sub_text, (400 - sub_text.get_width() // 2, 300))
+
+        pygame.draw.rect(screen, (70, 70, 70), lang_button_rect)
+        pygame.draw.rect(screen, (255, 255, 255), lang_button_rect, 2)
+        btn_text = font.render(f"[{current_lang}]", True, (255, 255, 255))
+        screen.blit(btn_text, (lang_button_rect.x + 15, lang_button_rect.y + 4))
+
+        pygame.display.flip()
+        continue
+
+    # --- [업그레이드 화면] ---
     if is_upgrading:
         overlay = pygame.Surface((800, 600))
         overlay.set_alpha(180)
@@ -158,20 +199,20 @@ while running:
         pygame.display.flip()
         continue
 
-    # --- 메인 게임 루프 ---
+    # --- [메인 게임 업데이트] ---
     play_time += dt
 
     if hp_regen > 0:
         player_hp = min(max_hp, player_hp + hp_regen * dt)
 
-    # 2. 플레이어 이동
+    # 플레이어 이동
     keys = pygame.key.get_pressed()
     dx = (keys[pygame.K_RIGHT] or keys[pygame.K_d]) - (keys[pygame.K_LEFT] or keys[pygame.K_a])
     dy = (keys[pygame.K_DOWN] or keys[pygame.K_s]) - (keys[pygame.K_UP] or keys[pygame.K_w])
     player.x += dx * 200 * dt
     player.y += dy * 200 * dt
 
-    # 3. 적 생성 (크기 20% 축소 적용)
+    # 적 생성
     spawn_interval = max(0.2, 1.0 - (play_time / 60.0) * 0.4)
     spawn_amount = 1 + int(play_time / 15.0)
 
@@ -182,7 +223,7 @@ while running:
             angle = random.uniform(0, math.pi * 2)
             ex = player.centerx + math.cos(angle) * 500
             ey = player.centery + math.sin(angle) * 500
-            
+
             is_elite = random.random() < 0.1
             if is_elite:
                 dir_x = player.centerx - ex
@@ -190,26 +231,11 @@ while running:
                 dist = math.hypot(dir_x, dir_y)
                 vx = (dir_x / dist) * 200 if dist > 0 else 200
                 vy = (dir_y / dist) * 200 if dist > 0 else 0
-                
-                # 엘리트 몹: 24x24 크기 (20% 축소)
-                enemies.append({
-                    "rect": pygame.Rect(ex, ey, 24, 24),
-                    "hp": 10,
-                    "is_elite": True,
-                    "vx": vx,
-                    "vy": vy
-                })
+                enemies.append({"rect": pygame.Rect(ex, ey, 24, 24), "hp": 10, "is_elite": True, "vx": vx, "vy": vy})
             else:
-                # 일반 몹: 16x16 크기 (20% 축소)
-                enemies.append({
-                    "rect": pygame.Rect(ex, ey, 16, 16),
-                    "hp": 1,
-                    "is_elite": False,
-                    "vx": 0,
-                    "vy": 0
-                })
+                enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": 1, "is_elite": False, "vx": 0, "vy": 0})
 
-    # 4. 포션 생성
+    # 포션 생성
     potion_timer += dt
     if potion_timer >= 10.0:
         potion_timer = 0
@@ -217,7 +243,7 @@ while running:
         py = random.randint(50, 550)
         potions.append(pygame.Rect(px, py, 15, 15))
 
-    # 5. 적 이동 및 데미지 (엘리트 몹 공격력 5배 설정)
+    # 적 이동 및 피격 처리
     base_enemy_damage = 1 + (play_time / 30.0)
     for enemy in enemies:
         if enemy["is_elite"]:
@@ -232,42 +258,31 @@ while running:
                 enemy["rect"].y += (dir_y / dist) * 100 * dt
 
         if player.colliderect(enemy["rect"]):
-            # 엘리트 몹은 5배의 공격력 부여
             dmg_mult = 5.0 if enemy["is_elite"] else 1.0
             player_hp -= base_enemy_damage * dmg_mult * dt
             if player_hp <= 0:
                 player_hp = 0
-                running = False
+                is_game_over = True
 
-    # 6. 전리품 이동 및 자석 수집 처리
+    # 전리품 이동 및 수집 (전리품 습득 시 처치 수 상승)
     for loot in loot_items[:]:
         dist_to_player = math.hypot(player.centerx - loot["x"], player.centery - loot["y"])
-        # 자석 범위 내에 들어오면 플레이어 쪽으로 이동
         if dist_to_player <= magnet_radius:
             if dist_to_player > 0:
                 loot["x"] += ((player.centerx - loot["x"]) / dist_to_player) * 350 * dt
                 loot["y"] += ((player.centery - loot["y"]) / dist_to_player) * 350 * dt
 
-            # 플레이어 획득 처리
             if dist_to_player < 20:
-                kill_count += loot["value"]
+                add_kills_and_check_upgrade(loot["value"])
                 loot_items.remove(loot)
 
-                # 처치 수 상승에 의한 레벨업 체크
-                if kill_count >= kills_for_next_upgrade:
-                    kills_for_next_upgrade *= 2
-                    is_upgrading = True
-                    avail = get_available_upgrades()
-                    upgrade_options = random.sample(avail, min(3, len(avail)))
-                    selected_option_index = 0
-
-    # 7. 포션 획득
+    # 포션 획득
     for potion in potions[:]:
         if player.colliderect(potion):
             player_hp = min(max_hp, player_hp + 50)
             potions.remove(potion)
 
-    # 8. 자동 발사
+    # 총알 발사
     shoot_timer += dt
     if shoot_timer >= shoot_interval and enemies:
         shoot_timer = 0
@@ -291,7 +306,7 @@ while running:
                         "hit_enemies": []
                     })
 
-    # 9. 총알 이동 및 충돌 (폭발 데미지 적용 포함)
+    # 총알 이동 및 충돌
     for bullet in bullets[:]:
         bullet["rect"].x += bullet["vx"] * dt
         bullet["rect"].y += bullet["vy"] * dt
@@ -301,10 +316,8 @@ while running:
                 bullet["hit_enemies"].append(enemy["rect"])
                 bullet["pierce"] -= 1
 
-                # 폭발 데미지 발동
                 if has_explosion:
                     explosions.append({"x": bullet["rect"].centerx, "y": bullet["rect"].centery, "radius": explosion_radius, "timer": 0.1})
-                    # 주변 적들에게도 피해 전달
                     for near_enemy in enemies:
                         if near_enemy != enemy:
                             e_dist = math.hypot(near_enemy["rect"].centerx - bullet["rect"].centerx, near_enemy["rect"].centery - bullet["rect"].centery)
@@ -313,59 +326,50 @@ while running:
 
                 enemy["hp"] -= 1
 
-                # 적 사망 처리 및 20% 확률 전리품 드롭
+                # 적 처치 처리 (적 처치 즉시 처치 수 상승)
                 if enemy["hp"] <= 0:
                     ex, ey = enemy["rect"].centerx, enemy["rect"].centery
                     is_elite = enemy["is_elite"]
+                    kill_value = 5 if is_elite else 1
+
+                    add_kills_and_check_upgrade(kill_value)
                     enemies.remove(enemy)
 
-                    # 20% 확률로 전리품 보석 드롭
+                    # 20% 확률 전리품 드롭
                     if random.random() < 0.20:
-                        loot_items.append({
-                            "x": ex,
-                            "y": ey,
-                            "value": 5 if is_elite else 1,
-                            "is_elite": is_elite
-                        })
+                        loot_items.append({"x": ex, "y": ey, "value": kill_value, "is_elite": is_elite})
 
                 if bullet["pierce"] <= 0:
                     if bullet in bullets:
                         bullets.remove(bullet)
                     break
 
-    # 폭발 이펙트 시각효과 타이머 업데이트
     for exp in explosions[:]:
         exp["timer"] -= dt
         if exp["timer"] <= 0:
             explosions.remove(exp)
 
-    # 10. 화면 그리기
+    # --- [그리기] ---
     screen.fill((30, 30, 30))
-    pygame.draw.rect(screen, (0, 255, 0), player) # 플레이어
-    
-    # 적 그리기
+    pygame.draw.rect(screen, (0, 255, 0), player)
+
     for enemy in enemies:
-        if enemy["is_elite"]:
-            pygame.draw.rect(screen, (160, 32, 240), enemy["rect"]) # 엘리트 몹 (보라색)
-        else:
-            pygame.draw.rect(screen, (255, 0, 0), enemy["rect"])     # 일반 몹 (빨간색)
-            
-    # 총알 및 포션 그리기
+        color = (160, 32, 240) if enemy["is_elite"] else (255, 0, 0)
+        pygame.draw.rect(screen, color, enemy["rect"])
+
     for bullet in bullets:
         pygame.draw.rect(screen, (255, 255, 0), bullet["rect"])
     for potion in potions:
         pygame.draw.rect(screen, (0, 191, 255), potion)
 
-    # 전리품 드롭 아이템 그리기
     for loot in loot_items:
-        color = (255, 105, 180) if loot["is_elite"] else (255, 215, 0) # 엘리트 전리품: 핑크, 일반: 금색
+        color = (255, 105, 180) if loot["is_elite"] else (255, 215, 0)
         pygame.draw.circle(screen, color, (int(loot["x"]), int(loot["y"])), 5 if loot["is_elite"] else 3)
 
-    # 폭발 이펙트 그리기 (주황색 원)
     for exp in explosions:
         pygame.draw.circle(screen, (255, 140, 0), (int(exp["x"]), int(exp["y"])), int(exp["radius"]), 2)
 
-    # 11. UI 렌더링
+    # UI
     minutes = int(play_time) // 60
     seconds = int(play_time) % 60
 
@@ -378,15 +382,10 @@ while running:
         kill_str = f"Kills: {kill_count} (Next UP: {kills_for_next_upgrade})"
         hp_str = f"HP: {int(player_hp)} / {max_hp}"
 
-    time_text = font.render(time_str, True, (255, 255, 255))
-    kill_text = font.render(kill_str, True, (255, 255, 255))
-    hp_text = font.render(hp_str, True, (0, 255, 127))
+    screen.blit(font.render(time_str, True, (255, 255, 255)), (10, 10))
+    screen.blit(font.render(kill_str, True, (255, 255, 255)), (10, 40))
+    screen.blit(font.render(hp_str, True, (0, 255, 127)), (10, 70))
 
-    screen.blit(time_text, (10, 10))
-    screen.blit(kill_text, (10, 40))
-    screen.blit(hp_text, (10, 70))
-
-    # [한영 전환 버튼]
     pygame.draw.rect(screen, (70, 70, 70), lang_button_rect)
     pygame.draw.rect(screen, (255, 255, 255), lang_button_rect, 2)
     btn_text = font.render(f"[{current_lang}]", True, (255, 255, 255))
