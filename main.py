@@ -71,7 +71,7 @@ def reset_game():
     global play_time, kill_count, kills_for_next_upgrade, player_level
     global is_upgrading, is_game_over, record_saved
 
-    player = pygame.Rect(400, 300, 30, 30)
+    player = pygame.Rect(400, 300, 30, 30)  # 캐릭터 크기 30x30
     enemies = []
     bullets = []
     potions = []
@@ -97,10 +97,10 @@ def reset_game():
     split_count = 0
 
     has_explosion = False
-    explosion_radius = 75.0
+    explosion_radius = 30.0 * 3.0  # 기본 폭발 범위: 캐릭터 크기(30)의 3배인 90.0
     explosion_upgrade_count = 0
     magnet_radius = 100.0
-    magnet_radius_sq = magnet_radius * magnet_radius  # 거리 제곱 미리 계산
+    magnet_radius_sq = magnet_radius * magnet_radius
 
     play_time = 0.0
     kill_count = 0
@@ -120,10 +120,17 @@ reset_game()
 
 def add_kills_and_check_upgrade(amount):
     global kill_count, kills_for_next_upgrade, player_level, is_upgrading, upgrade_options, selected_option_index
+    global max_hp, player_hp
+    
     kill_count += amount
     if kill_count >= kills_for_next_upgrade:
         kills_for_next_upgrade *= 2
         player_level += 1
+        
+        # 레벨업마다 최대 체력 +5, 현재 체력 +5 증가
+        max_hp += 5
+        player_hp = min(max_hp, player_hp + 5)
+        
         is_upgrading = True
 
         for loot in loot_items:
@@ -147,9 +154,9 @@ def get_base_upgrades():
         {"id": 13, "text_kor": "투사체 속도 +30%", "text_eng": "Bullet Speed +30%"}
     ]
     if not has_explosion:
-        upgrades.append({"id": 7, "text_kor": "폭발 데미지 추가 (범위 5배)", "text_eng": "Add Explosion (5x Size)"})
+        upgrades.append({"id": 7, "text_kor": "폭발 데미지 추가 (캐릭터 3배 범위)", "text_eng": "Add Explosion (3x Character Size)"})
     elif explosion_upgrade_count < 3:
-        upgrades.append({"id": 9, "text_kor": f"폭발 범위 +50% ({explosion_upgrade_count}/3)", "text_eng": f"Explosion Area +50% ({explosion_upgrade_count}/3)"})
+        upgrades.append({"id": 9, "text_kor": f"폭발 범위 +20% ({explosion_upgrade_count}/3)", "text_eng": f"Explosion Area +20% ({explosion_upgrade_count}/3)"})
     return upgrades
 
 def generate_upgrade_options():
@@ -206,7 +213,7 @@ def apply_single_upgrade(upgrade_id):
         magnet_radius_sq = magnet_radius * magnet_radius
     elif upgrade_id == 9:
         if explosion_upgrade_count < 3:
-            explosion_radius *= 1.50
+            explosion_radius *= 1.20  # 강화 1단계마다 20% 증가
             explosion_upgrade_count += 1
     elif upgrade_id == 10:
         move_speed *= 1.20
@@ -230,8 +237,12 @@ while running:
             if lang_button_rect.collidepoint(event.pos):
                 current_lang = 'ENG' if current_lang == 'KOR' else 'KOR'
 
-        if is_game_over and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_r:
+        if event.type == pygame.KEYDOWN:
+            # ESC 키 누르면 즉시 포기하기 (게임 오버)
+            if event.key == pygame.K_ESCAPE and not is_game_over:
+                is_game_over = True
+
+            if is_game_over and event.key == pygame.K_r:
                 reset_game()
 
         if is_upgrading and not is_game_over and event.type == pygame.KEYDOWN:
@@ -270,9 +281,12 @@ while running:
 
         px_c, py_c = player.centerx, player.centery
 
-        # 적 생성 (최대 몬스터 수 250마리로 제한하여 렉 방지)
+        # 적 생성 (최대 250마리로 최적화)
         spawn_interval = max(0.2, 1.0 - (play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(play_time / 15.0)
+
+        # 레벨 비례 적 체력 설정 (1레벨마다 적 체력 1 추가)
+        base_enemy_hp = 1 + (player_level - 1)
 
         spawn_timer += dt
         if spawn_timer >= spawn_interval and len(enemies) < 250:
@@ -288,9 +302,9 @@ while running:
                     dist = math.hypot(dir_x, dir_y)
                     vx = (dir_x / dist) * 200 if dist > 0 else 200
                     vy = (dir_y / dist) * 200 if dist > 0 else 0
-                    enemies.append({"rect": pygame.Rect(ex, ey, 24, 24), "hp": 10, "is_elite": True, "vx": vx, "vy": vy})
+                    enemies.append({"rect": pygame.Rect(ex, ey, 24, 24), "hp": base_enemy_hp + 9, "is_elite": True, "vx": vx, "vy": vy})
                 else:
-                    enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": 1, "is_elite": False, "vx": 0, "vy": 0})
+                    enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": base_enemy_hp, "is_elite": False, "vx": 0, "vy": 0})
 
         # 포션 생성
         potion_timer += dt
@@ -331,7 +345,7 @@ while running:
             else:
                 i += 1
 
-        # 전리품 수집 (거리 제곱 사용)
+        # 전리품 수집 (거리 제곱 최적화)
         i = 0
         while i < len(loot_items):
             loot = loot_items[i]
@@ -348,7 +362,7 @@ while running:
                     loot["x"] += (dx_l / dist) * speed * dt
                     loot["y"] += (dy_l / dist) * speed * dt
 
-                if dist_sq < 400:  # 20px 거리의 제곱
+                if dist_sq < 400:
                     add_kills_and_check_upgrade(loot["value"])
                     loot_items.pop(i)
                     continue
@@ -360,7 +374,7 @@ while running:
                 player_hp = min(max_hp, player_hp + 50)
                 potions.remove(potion)
 
-        # 총알 발사 (가장 가까운 적 정렬 거리 제곱 최적화)
+        # 총알 발사
         shoot_timer += dt
         if shoot_timer >= shoot_interval and enemies:
             shoot_timer = 0.0
@@ -381,7 +395,7 @@ while running:
                             "vy": math.sin(final_angle) * bullet_speed,
                             "pierce": pierce_count,
                             "can_split": True,
-                            "hit_enemies": set()  # set 자료구조로 탐색 속도 최적화
+                            "hit_enemies": set()
                         })
 
         # 총알 이동 및 충돌
@@ -394,7 +408,6 @@ while running:
             br.x += bullet["vx"] * dt
             br.y += bullet["vy"] * dt
 
-            # 화면 밖 벗어난 총알 즉시 제거
             if br.right < 0 or br.left > GAME_WIDTH or br.bottom < 0 or br.top > SCREEN_HEIGHT:
                 bullets.pop(b_idx)
                 continue
@@ -412,7 +425,6 @@ while running:
 
                     bx, by = br.centerx, br.centery
 
-                    # 파티클 생성 수 축소 (5개 -> 3개)
                     if len(hit_effects) < 100:
                         for _ in range(3):
                             hit_effects.append({
@@ -447,7 +459,7 @@ while running:
                                 "hit_enemies": split_hit
                             })
 
-                    # 폭발 연산 (거리 제곱 사용)
+                    # 폭발 연산
                     if has_explosion:
                         if len(explosions) < 30:
                             explosions.append({"x": bx, "y": by, "radius": explosion_radius, "timer": 0.1})
@@ -459,7 +471,6 @@ while running:
 
                     enemy["hp"] -= 1
 
-                    # 적 사망 처리
                     if enemy["hp"] <= 0:
                         ex, ey = er.centerx, er.centery
                         is_elite = enemy["is_elite"]
@@ -483,7 +494,7 @@ while running:
             else:
                 b_idx += 1
 
-        # 이펙트 타이머 업데이트 (빠른 리스트 제거)
+        # 이펙트 업데이트
         explosions = [exp for exp in explosions if exp["timer"] > 0]
         for exp in explosions:
             exp["timer"] -= dt
@@ -502,7 +513,6 @@ while running:
     # --- [그리기] ---
     screen.fill((30, 30, 30))
 
-    # 플레이어 및 체력바
     pygame.draw.rect(screen, (0, 255, 0), player)
     
     hp_ratio = max(0, player_hp / max_hp)
@@ -511,17 +521,14 @@ while running:
     pygame.draw.rect(screen, (80, 80, 80), (hp_bar_x, hp_bar_y, 40, 6))
     pygame.draw.rect(screen, (255, 50, 50), (hp_bar_x, hp_bar_y, int(40 * hp_ratio), 6))
 
-    # 적 그리기
     for enemy in enemies:
         color = (160, 32, 240) if enemy["is_elite"] else (255, 0, 0)
         pygame.draw.rect(screen, color, enemy["rect"])
 
-    # 총알 그리기
     for bullet in bullets:
         color = (255, 255, 0) if bullet.get("can_split", False) else (255, 165, 0)
         pygame.draw.rect(screen, color, bullet["rect"])
 
-    # 아이템 및 이펙트
     for potion in potions:
         pygame.draw.rect(screen, (0, 191, 255), potion)
 
@@ -543,10 +550,10 @@ while running:
     seconds = int(play_time) % 60
 
     if current_lang == 'KOR':
-        time_str = f"시간: {minutes:02d}:{seconds:02d}"
+        time_str = f"시간: {minutes:02d}:{seconds:02d} | [ESC]: 포기하기"
         kill_str = f"LV.{player_level} | 처치: {kill_count} (다음: {kills_for_next_upgrade})"
     else:
-        time_str = f"Time: {minutes:02d}:{seconds:02d}"
+        time_str = f"Time: {minutes:02d}:{seconds:02d} | [ESC]: Give Up"
         kill_str = f"LV.{player_level} | Kills: {kill_count} (Next: {kills_for_next_upgrade})"
 
     screen.blit(bold_font.render(time_str, True, (255, 255, 255)), (10, 10))
@@ -577,6 +584,7 @@ while running:
     screen.blit(bold_font.render(stat_title_str, True, (100, 200, 255)), (GAME_WIDTH + 15, 195))
 
     curr_time_dmg = 1 + int(play_time / 10.0)
+    curr_enemy_hp = 1 + (player_level - 1)
     stats_list = [
         f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
         f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
@@ -587,6 +595,7 @@ while running:
         f"관통력: {pierce_count}" if current_lang == 'KOR' else f"Pierce: {pierce_count}",
         f"분열 수: {split_count}" if current_lang == 'KOR' else f"Splits: {split_count}",
         f"폭발 범위: {int(explosion_radius*2)}" if current_lang == 'KOR' else f"Exp. Size: {int(explosion_radius*2)}",
+        f"적 체력: {curr_enemy_hp}" if current_lang == 'KOR' else f"Enemy HP: {curr_enemy_hp}",
         f"적 공격력: {curr_time_dmg}" if current_lang == 'KOR' else f"Enemy Dmg: {curr_time_dmg}",
     ]
     for idx, s_text in enumerate(stats_list):
