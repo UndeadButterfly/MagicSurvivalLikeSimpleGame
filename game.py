@@ -13,9 +13,13 @@ class GameState:
     def reset(self):
         self.player = pygame.Rect(400, 300, 30, 30)
         self.enemies, self.bullets, self.potions = [], [], []
+        self.invincibility_items = []  # [신규] 무적 아이템 목록
         self.loot_items, self.explosions, self.hit_effects, self.damage_rings = [], [], [], []
 
         self.spawn_timer = self.shoot_timer = self.potion_timer = 0.0
+        self.invincibility_item_timer = 0.0  # [신규] 무적 아이템 스폰 타이머
+        self.invincible_timer = 0.0  # [신규] 플레이어 무적 지속 시간
+
         self.max_hp = self.player_hp = 100
         self.hp_regen = 0
         self.move_speed = 200.0
@@ -25,7 +29,7 @@ class GameState:
         self.shoot_interval = 0.5
         self.fire_directions = 1
         self.split_count = 0
-        self.bonus_damage = 0  # [신규] 추가 공격력
+        self.bonus_damage = 0
 
         self.bullet_type = 'PIERCE'
         self.base_explosion_radius = 90.0
@@ -87,7 +91,6 @@ class GameState:
             self.player.center = old_center
             self.player_size_upgrades += 1
         elif upgrade_id == 15 and self.bullet_damage_upgrades < 4:
-            # [신규] 공격력 +1
             self.bonus_damage += 1
             self.bullet_damage_upgrades += 1
 
@@ -108,6 +111,10 @@ class GameState:
         if self.hp_regen > 0:
             self.player_hp = min(self.max_hp, self.player_hp + self.hp_regen * dt)
 
+        # 무적 타이머 감소
+        if self.invincible_timer > 0:
+            self.invincible_timer = max(0.0, self.invincible_timer - dt)
+
         # 이동 처리
         keys = pygame.key.get_pressed()
         spd = self.move_speed * 0.5 if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]) else self.move_speed
@@ -120,10 +127,10 @@ class GameState:
 
         px_c, py_c = self.player.centerx, self.player.centery
 
-        # 적 스폰 (레벨당 체력 +2 반영)
+        # 적 스폰 (스페셜 보스 추가)
         spawn_interval = max(0.2, 1.0 - (self.play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(self.play_time / 15.0)
-        base_enemy_hp = 1 + (self.player_level - 1) * 2  # [수정] 레벨마다 2씩 상승
+        base_enemy_hp = 1 + (self.player_level - 1) * 2
         time_damage_bonus = int(self.play_time / 10.0)
 
         self.spawn_timer += dt
@@ -134,7 +141,11 @@ class GameState:
                 ex, ey = px_c + math.cos(angle) * 500, py_c + math.sin(angle) * 500
                 rand_val = random.random()
 
-                if rand_val < 0.05:
+                # [신규] 스페셜 보스 (1% 확률) - 체력 3배, 공격력 3배
+                if rand_val < 0.01:
+                    s_boss_hp = (base_enemy_hp + 9) * 15
+                    self.enemies.append({"rect": pygame.Rect(ex, ey, 48, 48), "hp": s_boss_hp, "max_hp": s_boss_hp, "base_size": 48, "type": "SPECIAL_BOSS", "damage": (5 + time_damage_bonus) * 15, "vx": 0, "vy": 0})
+                elif rand_val < 0.05:
                     boss_hp = (base_enemy_hp + 9) * 5
                     self.enemies.append({"rect": pygame.Rect(ex, ey, 36, 36), "hp": boss_hp, "max_hp": boss_hp, "base_size": 36, "type": "BOSS", "damage": (5 + time_damage_bonus) * 5, "vx": 0, "vy": 0})
                 elif rand_val < 0.15:
@@ -144,14 +155,22 @@ class GameState:
                 else:
                     self.enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": base_enemy_hp, "max_hp": base_enemy_hp, "base_size": 16, "type": "NORMAL", "damage": 1 + time_damage_bonus, "vx": 0, "vy": 0})
 
-        # 포션 생성 (120초 제한 시간 타이머 설정)
+        # 포션 생성
         self.potion_timer += dt
         if self.potion_timer >= 10.0:
             self.potion_timer = 0.0
             p_rect = pygame.Rect(random.randint(50, config.GAME_WIDTH - 50), random.randint(50, config.SCREEN_HEIGHT - 50), 15, 15)
-            self.potions.append({"rect": p_rect, "timer": 120.0})  # [수정] 제한시간 120초(2분)
+            self.potions.append({"rect": p_rect, "timer": 120.0})
 
-        # 포션 타이머 감수 및 소멸 처리
+        # [신규] 무적 흰색 아이템 생성 (15초 주기로 30% 확률, 제한시간 60초)
+        self.invincibility_item_timer += dt
+        if self.invincibility_item_timer >= 15.0:
+            self.invincibility_item_timer = 0.0
+            if random.random() < 0.30:
+                item_rect = pygame.Rect(random.randint(50, config.GAME_WIDTH - 50), random.randint(50, config.SCREEN_HEIGHT - 50), 15, 15)
+                self.invincibility_items.append({"rect": item_rect, "timer": 60.0})
+
+        # 포션 습득 및 소멸
         p_idx = 0
         while p_idx < len(self.potions):
             potion = self.potions[p_idx]
@@ -165,6 +184,20 @@ class GameState:
                 else:
                     p_idx += 1
 
+        # [신규] 무적 아이템 습득 및 소멸
+        inv_idx = 0
+        while inv_idx < len(self.invincibility_items):
+            item = self.invincibility_items[inv_idx]
+            item["timer"] -= dt
+            if item["timer"] <= 0:
+                self.invincibility_items.pop(inv_idx)
+            else:
+                if self.player.colliderect(item["rect"]):
+                    self.invincible_timer = 5.0  # 5초 무적 적용
+                    self.invincibility_items.pop(inv_idx)
+                else:
+                    inv_idx += 1
+
         # 적 이동 및 충돌
         i = 0
         while i < len(self.enemies):
@@ -174,19 +207,21 @@ class GameState:
                 er.x += enemy["vx"] * self.enemy_speed_mult * dt
                 er.y += enemy["vy"] * self.enemy_speed_mult * dt
             else:
-                speed = 70 if enemy["type"] == "BOSS" else 100
+                speed = 50 if enemy["type"] == "SPECIAL_BOSS" else (70 if enemy["type"] == "BOSS" else 100)
                 dist = math.hypot(px_c - er.centerx, py_c - er.centery)
                 if dist > 0:
                     er.x += ((px_c - er.centerx) / dist) * speed * self.enemy_speed_mult * dt
                     er.y += ((py_c - er.centery) / dist) * speed * self.enemy_speed_mult * dt
 
             if self.player.colliderect(er):
-                self.player_hp -= enemy["damage"]
-                self.damage_rings.append({"x": px_c, "y": py_c, "radius": 15, "timer": 0.2})
+                # 무적 상태가 아닐 때만 데미지 적용
+                if self.invincible_timer <= 0:
+                    self.player_hp -= enemy["damage"]
+                    self.damage_rings.append({"x": px_c, "y": py_c, "radius": 15, "timer": 0.2})
+                    if self.player_hp <= 0:
+                        self.player_hp = 0
+                        self.is_game_over = True
                 self.enemies.pop(i)
-                if self.player_hp <= 0:
-                    self.player_hp = 0
-                    self.is_game_over = True
             else: i += 1
 
         # 전리품
@@ -205,7 +240,7 @@ class GameState:
                     self.loot_items.pop(i); continue
             i += 1
 
-        # 발사 (보너스 공격력 반영)
+        # 발사
         self.shoot_timer += dt
         if self.shoot_timer >= self.shoot_interval and self.enemies:
             self.shoot_timer = 0.0
@@ -269,7 +304,7 @@ class GameState:
                     update_enemy_size(enemy)
 
                     if enemy["hp"] <= 0:
-                        val = 25 if enemy["type"] == "BOSS" else (5 if enemy["type"] == "ELITE" else 1)
+                        val = 75 if enemy["type"] == "SPECIAL_BOSS" else (25 if enemy["type"] == "BOSS" else (5 if enemy["type"] == "ELITE" else 1))
                         self.add_kills_and_check_upgrade(val)
                         self.enemies.pop(e_idx)
                         if random.random() < 0.50 and len(self.loot_items) < 150:
@@ -308,7 +343,7 @@ class GameState:
             "fire_directions": self.fire_directions,
             "disp_bc": disp_bc,
             "pierce_count": self.pierce_count,
-            "bonus_damage": self.bonus_damage,  # 스탯 패널용
+            "bonus_damage": self.bonus_damage,
             "split_count": self.split_count,
             "bullet_speed": self.bullet_speed,
             "current_exp_radius": current_exp_radius,

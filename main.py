@@ -55,24 +55,45 @@ while running:
 
     # 렌더링
     screen.fill((30, 30, 30))
-    pygame.draw.rect(screen, (0, 255, 0), game.player)
 
+    # 무적 상태일 때는 노란색으로 반짝임
+    player_color = (255, 255, 0) if (game.invincible_timer > 0 and int(game.invincible_timer * 10) % 2 == 0) else (0, 255, 0)
+    pygame.draw.rect(screen, player_color, game.player)
+
+    # 적 렌더링 (스페셜 보스는 붉은주황색)
     for e in game.enemies:
-        c = (255, 215, 0) if e["type"] == "BOSS" else ((160, 32, 240) if e["type"] == "ELITE" else (255, 0, 0))
+        if e["type"] == "SPECIAL_BOSS":
+            c = (255, 60, 0)
+        elif e["type"] == "BOSS":
+            c = (255, 215, 0)
+        elif e["type"] == "ELITE":
+            c = (160, 32, 240)
+        else:
+            c = (255, 0, 0)
         pygame.draw.rect(screen, c, e["rect"])
 
+    # 총알 렌더링
     for b in game.bullets:
         c = (255, 80, 80) if game.bullet_type == 'EXPLOSIVE' else (255, 255, 0)
         pygame.draw.rect(screen, c, b["rect"])
 
-    # 포션 렌더링 및 제한 시간 표시
+    # 체력 포션 렌더링
     for p in game.potions:
         pygame.draw.rect(screen, (0, 191, 255), p["rect"])
         timer_text = config.font.render(f"{int(p['timer'])}s", True, (255, 255, 255))
         screen.blit(timer_text, (p["rect"].x - 2, p["rect"].y - 15))
 
+    # [신규] 무적 흰색 아이템 렌더링 및 타이머 표시
+    for inv_item in game.invincibility_items:
+        pygame.draw.rect(screen, (255, 255, 255), inv_item["rect"])
+        timer_text = config.font.render(f"{int(inv_item['timer'])}s", True, (255, 255, 255))
+        screen.blit(timer_text, (inv_item["rect"].x - 2, inv_item["rect"].y - 15))
+
+    # 전리품 렌더링
     for l in game.loot_items:
-        pygame.draw.circle(screen, (255, 215, 0) if l["type"] in ("BOSS", "NORMAL") else (255, 105, 180), (int(l["x"]), int(l["y"])), 8 if l["type"] == "BOSS" else 3)
+        r_size = 10 if l["type"] == "SPECIAL_BOSS" else (8 if l["type"] == "BOSS" else 3)
+        c_color = (255, 60, 0) if l["type"] == "SPECIAL_BOSS" else ((255, 215, 0) if l["type"] in ("BOSS", "NORMAL") else (255, 105, 180))
+        pygame.draw.circle(screen, c_color, (int(l["x"]), int(l["y"])), r_size)
 
     for exp in game.explosions:
         pygame.draw.circle(screen, (255, 140, 0), (int(exp["x"]), int(exp["y"])), int(exp["radius"]), 2)
@@ -84,7 +105,7 @@ while running:
         pygame.draw.circle(screen, (255, 0, 0), (int(ring["x"]), int(ring["y"])), int(ring["radius"]), 2)
 
     # UI 출력
-    ui.draw_hud(screen, game.play_time, current_lang, game.player_level, game.kill_count, game.kills_for_next_upgrade, lang_button_rect)
+    ui.draw_hud(screen, game.play_time, current_lang, game.player_level, game.kill_count, game.kills_for_next_upgrade, lang_button_rect, game.invincible_timer)
     ui.draw_stats_panel(screen, game.rankings, game.get_stats_dict())
 
     if game.is_upgrading and not game.is_game_over:
