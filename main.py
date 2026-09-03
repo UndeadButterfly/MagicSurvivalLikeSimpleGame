@@ -67,7 +67,8 @@ def reset_game():
     global player, enemies, bullets, potions, loot_items, explosions, hit_effects, damage_rings
     global spawn_timer, shoot_timer, potion_timer
     global max_hp, player_hp, hp_regen, move_speed, pierce_count, bullet_count, bullet_speed, shoot_interval, fire_directions, split_count, enemy_speed_mult
-    global has_explosion, explosion_radius, explosion_upgrade_count, magnet_radius, magnet_radius_sq
+    global bullet_type, base_explosion_radius, magnet_radius, magnet_radius_sq
+    global bullet_count_upgrades, bullet_speed_upgrades, split_upgrades
     global play_time, kill_count, kills_for_next_upgrade, player_level
     global is_upgrading, is_game_over, record_saved
 
@@ -96,9 +97,15 @@ def reset_game():
     fire_directions = 1
     split_count = 0
 
-    has_explosion = False
-    explosion_radius = 30.0 * 3.0  # 기본 폭발 범위: 캐릭터 크기(30)의 3배인 90.0
-    explosion_upgrade_count = 0
+    # 탄종 설정 ('PIERCE' 또는 'EXPLOSIVE')
+    bullet_type = 'PIERCE'
+    base_explosion_radius = 30.0 * 3.0  # 기본 폭발 범위: 90.0
+
+    # 업그레이드 제한 카운터
+    bullet_count_upgrades = 0  # 최대 5회
+    bullet_speed_upgrades = 0  # 최대 3회
+    split_upgrades = 0         # 최대 4회
+
     magnet_radius = 100.0
     magnet_radius_sq = magnet_radius * magnet_radius
 
@@ -124,11 +131,9 @@ def add_kills_and_check_upgrade(amount):
     
     kill_count += amount
     if kill_count >= kills_for_next_upgrade:
-        # 요구 처치 수 +30% 증가 (정수 처리)
         kills_for_next_upgrade = int(kills_for_next_upgrade * 1.3)
         player_level += 1
         
-        # 레벨업마다 최대 체력 +5, 현재 체력 +5 증가
         max_hp += 5
         player_hp = min(max_hp, player_hp + 5)
         
@@ -143,21 +148,33 @@ def add_kills_and_check_upgrade(amount):
 def get_base_upgrades():
     upgrades = [
         {"id": 1, "text_kor": "관통력 +1", "text_eng": "Pierce +1"},
-        {"id": 2, "text_kor": "개수 +2", "text_eng": "Bullet Count +2"},
         {"id": 3, "text_kor": "공격 간격 -10%", "text_eng": "Cooldown -10%"},
         {"id": 4, "text_kor": "공격 방향 +1", "text_eng": "Direction +1"},
         {"id": 5, "text_kor": "최대 체력 +10", "text_eng": "Max HP +10"},
         {"id": 6, "text_kor": "초당 체력회복 +1", "text_eng": "HP Regen +1"},
         {"id": 8, "text_kor": "전리품 획득 범위 +10%", "text_eng": "Magnet Range +10%"},
         {"id": 10, "text_kor": "이동속도 +20%", "text_eng": "Move Speed +20%"},
-        {"id": 11, "text_kor": "적중 시 분열 +1", "text_eng": "Bullet Split +1"},
-        {"id": 12, "text_kor": "적 이동속도 -10%", "text_eng": "Enemy Speed -10%"},
-        {"id": 13, "text_kor": "투사체 속도 +30%", "text_eng": "Bullet Speed +30%"}
+        {"id": 12, "text_kor": "적 이동속도 -10%", "text_eng": "Enemy Speed -10%"}
     ]
-    if not has_explosion:
-        upgrades.append({"id": 7, "text_kor": "폭발 데미지 추가 (캐릭터 3배 범위)", "text_eng": "Add Explosion (3x Character Size)"})
-    elif explosion_upgrade_count < 3:
-        upgrades.append({"id": 9, "text_kor": f"폭발 범위 +20% ({explosion_upgrade_count}/3)", "text_eng": f"Explosion Area +20% ({explosion_upgrade_count}/3)"})
+
+    # 개수 +2 (최대 5회)
+    if bullet_count_upgrades < 5:
+        upgrades.append({"id": 2, "text_kor": f"개수 +2 ({bullet_count_upgrades}/5)", "text_eng": f"Bullet Count +2 ({bullet_count_upgrades}/5)"})
+
+    # 적중 시 분열 +1 (최대 4회)
+    if split_upgrades < 4:
+        upgrades.append({"id": 11, "text_kor": f"적중 시 분열 +1 ({split_upgrades}/4)", "text_eng": f"Bullet Split +1 ({split_upgrades}/4)"})
+
+    # 투사체 속도 +30% (최대 3회)
+    if bullet_speed_upgrades < 3:
+        upgrades.append({"id": 13, "text_kor": f"투사체 속도 +30% ({bullet_speed_upgrades}/3)", "text_eng": f"Bullet Speed +30% ({bullet_speed_upgrades}/3)"})
+
+    # 탄종 변경 옵션
+    if bullet_type == 'PIERCE':
+        upgrades.append({"id": 14, "text_kor": "탄종 변경: 폭발탄 (범위/데미지 관통 비례)", "text_eng": "Change Ammo: Explosive (Area/Dmg scale with Pierce)"})
+    else:
+        upgrades.append({"id": 15, "text_kor": "탄종 변경: 관통탄 (순수 관통 위주)", "text_eng": "Change Ammo: Piercing (Focus on Pierce)"})
+
     return upgrades
 
 def generate_upgrade_options():
@@ -192,12 +209,15 @@ def apply_upgrade(upgrade_ids):
 
 def apply_single_upgrade(upgrade_id):
     global pierce_count, bullet_count, bullet_speed, shoot_interval, fire_directions, max_hp, player_hp, hp_regen, move_speed, split_count, enemy_speed_mult
-    global has_explosion, explosion_radius, explosion_upgrade_count, magnet_radius, magnet_radius_sq
+    global bullet_type, magnet_radius, magnet_radius_sq
+    global bullet_count_upgrades, bullet_speed_upgrades, split_upgrades
 
     if upgrade_id == 1:
         pierce_count += 1
     elif upgrade_id == 2:
-        bullet_count += 2
+        if bullet_count_upgrades < 5:
+            bullet_count += 2
+            bullet_count_upgrades += 1
     elif upgrade_id == 3:
         shoot_interval *= 0.9
     elif upgrade_id == 4:
@@ -207,23 +227,40 @@ def apply_single_upgrade(upgrade_id):
         player_hp += 10
     elif upgrade_id == 6:
         hp_regen += 1
-    elif upgrade_id == 7:
-        has_explosion = True
     elif upgrade_id == 8:
         magnet_radius *= 1.10
         magnet_radius_sq = magnet_radius * magnet_radius
-    elif upgrade_id == 9:
-        if explosion_upgrade_count < 3:
-            explosion_radius *= 1.20
-            explosion_upgrade_count += 1
     elif upgrade_id == 10:
         move_speed *= 1.20
     elif upgrade_id == 11:
-        split_count += 1
+        if split_upgrades < 4:
+            split_count += 1
+            split_upgrades += 1
     elif upgrade_id == 12:
         enemy_speed_mult *= 0.90
     elif upgrade_id == 13:
-        bullet_speed *= 1.30
+        if bullet_speed_upgrades < 3:
+            bullet_speed *= 1.30
+            bullet_speed_upgrades += 1
+    elif upgrade_id == 14:
+        bullet_type = 'EXPLOSIVE'
+    elif upgrade_id == 15:
+        bullet_type = 'PIERCE'
+
+def update_enemy_size(enemy):
+    ratio = enemy["hp"] / enemy["max_hp"]
+    scale = 1.0
+    if ratio <= 0.30:
+        scale = 0.8
+    elif ratio <= 0.70:
+        scale = 0.9
+
+    new_size = int(enemy["base_size"] * scale)
+    if enemy["rect"].width != new_size:
+        center = enemy["rect"].center
+        enemy["rect"].width = new_size
+        enemy["rect"].height = new_size
+        enemy["rect"].center = center
 
 running = True
 while running:
@@ -281,7 +318,7 @@ while running:
 
         px_c, py_c = player.centerx, player.centery
 
-        # 적 생성 (최대 250마리로 최적화)
+        # 적 생성
         spawn_interval = max(0.2, 1.0 - (play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(play_time / 15.0)
 
@@ -301,9 +338,27 @@ while running:
                     dist = math.hypot(dir_x, dir_y)
                     vx = (dir_x / dist) * 200 if dist > 0 else 200
                     vy = (dir_y / dist) * 200 if dist > 0 else 0
-                    enemies.append({"rect": pygame.Rect(ex, ey, 24, 24), "hp": base_enemy_hp + 9, "is_elite": True, "vx": vx, "vy": vy})
+                    hp = base_enemy_hp + 9
+                    enemies.append({
+                        "rect": pygame.Rect(ex, ey, 24, 24),
+                        "hp": hp,
+                        "max_hp": hp,
+                        "base_size": 24,
+                        "is_elite": True,
+                        "vx": vx,
+                        "vy": vy
+                    })
                 else:
-                    enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": base_enemy_hp, "is_elite": False, "vx": 0, "vy": 0})
+                    hp = base_enemy_hp
+                    enemies.append({
+                        "rect": pygame.Rect(ex, ey, 16, 16),
+                        "hp": hp,
+                        "max_hp": hp,
+                        "base_size": 16,
+                        "is_elite": False,
+                        "vx": 0,
+                        "vy": 0
+                    })
 
         # 포션 생성
         potion_timer += dt
@@ -399,7 +454,11 @@ while running:
 
         # 총알 이동 및 충돌
         b_idx = 0
-        exp_sq = explosion_radius * explosion_radius
+
+        # 폭발 탄종 스탯 계산: 관통력만큼 범위 +20%, 데미지 = 1 + pierce_count
+        current_exp_radius = base_explosion_radius * (1.0 + 0.20 * pierce_count)
+        exp_sq = current_exp_radius * current_exp_radius
+        exp_damage = 1 + pierce_count
 
         while b_idx < len(bullets):
             bullet = bullets[b_idx]
@@ -458,17 +517,19 @@ while running:
                                 "hit_enemies": split_hit
                             })
 
-                    # 폭발 연산
-                    if has_explosion:
+                    # 폭발 연산 (폭발탄일 경우)
+                    if bullet_type == 'EXPLOSIVE':
                         if len(explosions) < 30:
-                            explosions.append({"x": bx, "y": by, "radius": explosion_radius, "timer": 0.1})
+                            explosions.append({"x": bx, "y": by, "radius": current_exp_radius, "timer": 0.1})
                         for near_enemy in enemies:
                             edx = near_enemy["rect"].centerx - bx
                             edy = near_enemy["rect"].centery - by
                             if edx * edx + edy * edy <= exp_sq:
-                                near_enemy["hp"] -= 1
+                                near_enemy["hp"] -= exp_damage
+                                update_enemy_size(near_enemy)
 
                     enemy["hp"] -= 1
+                    update_enemy_size(enemy)
 
                     if enemy["hp"] <= 0:
                         ex, ey = er.centerx, er.centery
@@ -525,7 +586,11 @@ while running:
         pygame.draw.rect(screen, color, enemy["rect"])
 
     for bullet in bullets:
-        color = (255, 255, 0) if bullet.get("can_split", False) else (255, 165, 0)
+        # 폭발탄일 경우 붉은빛 계열로 표시
+        if bullet_type == 'EXPLOSIVE':
+            color = (255, 80, 80) if bullet.get("can_split", False) else (255, 0, 0)
+        else:
+            color = (255, 255, 0) if bullet.get("can_split", False) else (255, 165, 0)
         pygame.draw.rect(screen, color, bullet["rect"])
 
     for potion in potions:
@@ -584,21 +649,24 @@ while running:
 
     curr_time_dmg = 1 + int(play_time / 10.0)
     curr_enemy_hp = 1 + (player_level - 1)
+    type_display = "관통탄" if bullet_type == 'PIERCE' else "폭발탄"
     stats_list = [
+        f"탄종: {type_display}" if current_lang == 'KOR' else f"Ammo: {bullet_type}",
         f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
         f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
         f"공격간격: {shoot_interval:.2f}초" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
         f"발사방향: {fire_directions}방향" if current_lang == 'KOR' else f"Directions: {fire_directions}",
-        f"총알 개수: {bullet_count}개" if current_lang == 'KOR' else f"Bullets: {bullet_count}",
-        f"투사체 속도: {int(bullet_speed)}" if current_lang == 'KOR' else f"B.Speed: {int(bullet_speed)}",
+        f"총알 개수: {bullet_count}개 ({bullet_count_upgrades}/5)" if current_lang == 'KOR' else f"Bullets: {bullet_count} ({bullet_count_upgrades}/5)",
+        f"투사체 속도: {int(bullet_speed)} ({bullet_speed_upgrades}/3)" if current_lang == 'KOR' else f"B.Speed: {int(bullet_speed)} ({bullet_speed_upgrades}/3)",
         f"관통력: {pierce_count}" if current_lang == 'KOR' else f"Pierce: {pierce_count}",
-        f"분열 수: {split_count}" if current_lang == 'KOR' else f"Splits: {split_count}",
-        f"폭발 범위: {int(explosion_radius*2)}" if current_lang == 'KOR' else f"Exp. Size: {int(explosion_radius*2)}",
+        f"분열 수: {split_count} ({split_upgrades}/4)" if current_lang == 'KOR' else f"Splits: {split_count} ({split_upgrades}/4)",
+        f"폭발 데미지: {exp_damage}" if current_lang == 'KOR' and bullet_type == 'EXPLOSIVE' else f"Exp. Dmg: {exp_damage}" if bullet_type == 'EXPLOSIVE' else "",
         f"적 체력: {curr_enemy_hp}" if current_lang == 'KOR' else f"Enemy HP: {curr_enemy_hp}",
         f"적 공격력: {curr_time_dmg}" if current_lang == 'KOR' else f"Enemy Dmg: {curr_time_dmg}",
     ]
     for idx, s_text in enumerate(stats_list):
-        screen.blit(font.render(s_text, True, (220, 220, 220)), (GAME_WIDTH + 12, 225 + idx * 24))
+        if s_text:
+            screen.blit(font.render(s_text, True, (220, 220, 220)), (GAME_WIDTH + 12, 225 + idx * 24))
 
     # 레벨업 팝업
     if is_upgrading and not is_game_over:
