@@ -124,7 +124,8 @@ def add_kills_and_check_upgrade(amount):
     
     kill_count += amount
     if kill_count >= kills_for_next_upgrade:
-        kills_for_next_upgrade *= 2
+        # 요구 처치 수 +30% 증가 (정수 처리)
+        kills_for_next_upgrade = int(kills_for_next_upgrade * 1.3)
         player_level += 1
         
         # 레벨업마다 최대 체력 +5, 현재 체력 +5 증가
@@ -213,7 +214,7 @@ def apply_single_upgrade(upgrade_id):
         magnet_radius_sq = magnet_radius * magnet_radius
     elif upgrade_id == 9:
         if explosion_upgrade_count < 3:
-            explosion_radius *= 1.20  # 강화 1단계마다 20% 증가
+            explosion_radius *= 1.20
             explosion_upgrade_count += 1
     elif upgrade_id == 10:
         move_speed *= 1.20
@@ -238,7 +239,6 @@ while running:
                 current_lang = 'ENG' if current_lang == 'KOR' else 'KOR'
 
         if event.type == pygame.KEYDOWN:
-            # ESC 키 누르면 즉시 포기하기 (게임 오버)
             if event.key == pygame.K_ESCAPE and not is_game_over:
                 is_game_over = True
 
@@ -285,7 +285,6 @@ while running:
         spawn_interval = max(0.2, 1.0 - (play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(play_time / 15.0)
 
-        # 레벨 비례 적 체력 설정 (1레벨마다 적 체력 1 추가)
         base_enemy_hp = 1 + (player_level - 1)
 
         spawn_timer += dt
@@ -345,7 +344,7 @@ while running:
             else:
                 i += 1
 
-        # 전리품 수집 (거리 제곱 최적화)
+        # 전리품 수집
         i = 0
         while i < len(loot_items):
             loot = loot_items[i]
