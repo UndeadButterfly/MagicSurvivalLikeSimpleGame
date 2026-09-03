@@ -2,6 +2,7 @@ import pygame
 import math
 import random
 import platform
+import os
 
 # 초기화
 pygame.init()
@@ -29,11 +30,36 @@ def get_korean_font(size):
     except:
         return pygame.font.SysFont(None, size)
 
-font = get_korean_font(20)
-bold_font = get_korean_font(22)
+font = get_korean_font(18)
+bold_font = get_korean_font(20)
 title_font = get_korean_font(36)
 
-rankings = []
+# --- [랭킹 파일 입출력] ---
+RANKING_FILE = "rankings.txt"
+
+def load_rankings():
+    ranks = []
+    if os.path.exists(RANKING_FILE):
+        try:
+            with open(RANKING_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split(",")
+                    if len(parts) == 2:
+                        ranks.append((int(parts[0]), float(parts[1])))
+        except Exception as e:
+            print(f"랭킹 로드 실패: {e}")
+    ranks.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return ranks
+
+def save_rankings(ranks):
+    try:
+        with open(RANKING_FILE, "w", encoding="utf-8") as f:
+            for kill_c, p_time in ranks:
+                f.write(f"{kill_c},{p_time:.2f}\n")
+    except Exception as e:
+        print(f"랭킹 저장 실패: {e}")
+
+rankings = load_rankings()
 
 def reset_game():
     global player, enemies, bullets, potions, loot_items, explosions
@@ -58,7 +84,7 @@ def reset_game():
     player_hp = 100
     hp_regen = 0
     move_speed = 200.0
-    enemy_speed_mult = 1.0  # 적 이동속도 배율 (기본 100%)
+    enemy_speed_mult = 1.0
     pierce_count = 1
     bullet_count = 1
     shoot_interval = 0.5
@@ -147,7 +173,7 @@ def apply_upgrade(upgrade_id):
     elif upgrade_id == 11:
         split_count += 1
     elif upgrade_id == 12:
-        enemy_speed_mult *= 0.90  # 적 이동속도 10% 감소
+        enemy_speed_mult *= 0.90
 
 running = True
 while running:
@@ -180,6 +206,7 @@ while running:
         if not record_saved:
             rankings.append((kill_count, play_time))
             rankings.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            save_rankings(rankings)  # TXT 파일로 저장
             record_saved = True
 
     # --- [메인 게임 업데이트] ---
@@ -228,9 +255,9 @@ while running:
             py = random.randint(50, SCREEN_HEIGHT - 50)
             potions.append(pygame.Rect(px, py, 15, 15))
 
-        # 적 이동 (이동속도 디버프 배율 적용)
-        base_enemy_damage = 1 + (play_time / 30.0)
-        for enemy in enemies:
+        # 적 이동 및 충돌
+        base_enemy_damage = 10 + (play_time / 5.0)  # 일회성 접촉 피해량
+        for enemy in enemies[:]:
             if enemy["is_elite"]:
                 enemy["rect"].x += enemy["vx"] * enemy_speed_mult * dt
                 enemy["rect"].y += enemy["vy"] * enemy_speed_mult * dt
@@ -242,9 +269,11 @@ while running:
                     enemy["rect"].x += (dir_x / dist) * 100 * enemy_speed_mult * dt
                     enemy["rect"].y += (dir_y / dist) * 100 * enemy_speed_mult * dt
 
+            # 적이 캐릭터와 부딪히면 데미지 후 사라짐
             if player.colliderect(enemy["rect"]):
-                dmg_mult = 5.0 if enemy["is_elite"] else 1.0
-                player_hp -= base_enemy_damage * dmg_mult * dt
+                dmg_mult = 2.0 if enemy["is_elite"] else 1.0
+                player_hp -= base_enemy_damage * dmg_mult
+                enemies.remove(enemy)
                 if player_hp <= 0:
                     player_hp = 0
                     is_game_over = True
@@ -307,10 +336,9 @@ while running:
 
                     bx, by = bullet["rect"].centerx, bullet["rect"].centery
 
-                    # 1) 분열 로직: 분열 시 적중 위치 기준으로 가장 가까운 적을 타게팅
+                    # 분열 로직
                     if bullet.get("can_split", False) and split_count > 0:
                         split_num = split_count + 1
-                        # 충돌 대상 및 이미 맞는 적을 제외하지 않고, 분열 시점의 다른 모든 적을 거리순 정렬
                         other_enemies = [e for e in enemies if e != enemy]
                         other_enemies.sort(key=lambda e: math.hypot(e["rect"].centerx - bx, e["rect"].centery - by))
 
@@ -333,18 +361,17 @@ while running:
                                 "hit_enemies": [enemy["rect"]]
                             })
 
-                    # 2) 폭발 로직: 폭발 범위 내 '모든' 적에게 피해
+                    # 폭발 로직
                     if has_explosion:
                         explosions.append({"x": bx, "y": by, "radius": explosion_radius, "timer": 0.1})
                         for near_enemy in enemies:
-                            # 직격당한 적 포함, 범위 내 전체 적에게 폭발 데미지
                             e_dist = math.hypot(near_enemy["rect"].centerx - bx, near_enemy["rect"].centery - by)
                             if e_dist <= explosion_radius:
                                 near_enemy["hp"] -= 1
 
                     enemy["hp"] -= 1
 
-                    # 적 처치 및 사망 처리
+                    # 적 사망 처리 (경험치 드랍률 50%)
                     dead_enemies = [e for e in enemies if e["hp"] <= 0]
                     for d_enemy in dead_enemies:
                         if d_enemy in enemies:
@@ -355,7 +382,8 @@ while running:
                             add_kills_and_check_upgrade(kill_value)
                             enemies.remove(d_enemy)
 
-                            if random.random() < 0.20:
+                            # 경험치(전리품) 드랍률 50%
+                            if random.random() < 0.50:
                                 loot_items.append({"x": ex, "y": ey, "value": kill_value, "is_elite": is_elite, "magnetized": False})
 
                     if bullet["pierce"] <= 0:
@@ -391,7 +419,7 @@ while running:
     for exp in explosions:
         pygame.draw.circle(screen, (255, 140, 0), (int(exp["x"]), int(exp["y"])), int(exp["radius"]), 2)
 
-    # UI
+    # --- [상단 UI 및 좌측 스탯 현황] ---
     minutes = int(play_time) // 60
     seconds = int(play_time) % 60
 
@@ -404,9 +432,27 @@ while running:
         kill_str = f"LV.{player_level} | Kills: {kill_count} (Next: {kills_for_next_upgrade})"
         hp_str = f"HP: {int(player_hp)} / {max_hp}"
 
-    screen.blit(font.render(time_str, True, (255, 255, 255)), (10, 10))
-    screen.blit(font.render(kill_str, True, (255, 255, 255)), (10, 35))
-    screen.blit(font.render(hp_str, True, (0, 255, 127)), (10, 60))
+    screen.blit(bold_font.render(time_str, True, (255, 255, 255)), (10, 10))
+    screen.blit(bold_font.render(kill_str, True, (255, 255, 255)), (10, 32))
+    screen.blit(bold_font.render(hp_str, True, (0, 255, 127)), (10, 54))
+
+    # 좌측 스탯 정보 패널
+    stats_panel = pygame.Surface((180, 175))
+    stats_panel.set_alpha(150)
+    stats_panel.fill((0, 0, 0))
+    screen.blit(stats_panel, (10, 85))
+
+    stats_list = [
+        f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
+        f"공격간격: {shoot_interval:.2f}s" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
+        f"발사방향/개수: {fire_directions} / {bullet_count}" if current_lang == 'KOR' else f"Dir/Count: {fire_directions} / {bullet_count}",
+        f"관통/분열: {pierce_count} / {split_count}" if current_lang == 'KOR' else f"Pierce/Split: {pierce_count} / {split_count}",
+        f"HP 회복: +{hp_regen}/s" if current_lang == 'KOR' else f"HP Regen: +{hp_regen}/s",
+        f"획득 범위: {int(magnet_radius)}" if current_lang == 'KOR' else f"Magnet: {int(magnet_radius)}",
+        f"적 속도: {int(enemy_speed_mult * 100)}%" if current_lang == 'KOR' else f"Enemy Spd: {int(enemy_speed_mult * 100)}%",
+    ]
+    for idx, s_text in enumerate(stats_list):
+        screen.blit(font.render(s_text, True, (200, 220, 255)), (15, 90 + idx * 22))
 
     # [한영 버튼]
     pygame.draw.rect(screen, (70, 70, 70), lang_button_rect)
