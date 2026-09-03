@@ -148,7 +148,7 @@ while running:
                 ex, ey = px_c + math.cos(angle) * 500, py_c + math.sin(angle) * 500
                 rand_val = random.random()
 
-                if rand_val < 0.05: # 보스 몹 (체력/공격력: 엘리트 5배)
+                if rand_val < 0.05: # 보스 몹
                     boss_hp = (base_enemy_hp + 9) * 5
                     enemies.append({"rect": pygame.Rect(ex, ey, 36, 36), "hp": boss_hp, "max_hp": boss_hp, "base_size": 36, "type": "BOSS", "damage": (5 + time_damage_bonus) * 5, "vx": 0, "vy": 0})
                 elif rand_val < 0.15: # 엘리트 몹
@@ -163,7 +163,7 @@ while running:
             potion_timer = 0.0
             potions.append(pygame.Rect(random.randint(50, config.GAME_WIDTH - 50), random.randint(50, config.SCREEN_HEIGHT - 50), 15, 15))
 
-        # 적 이동 (보스 속도 = 일반 몹 70%)
+        # 적 이동
         i = 0
         while i < len(enemies):
             enemy = enemies[i]
@@ -205,7 +205,7 @@ while running:
                 player_hp = min(max_hp, player_hp + 50)
                 potions.remove(potion)
 
-        # 사격 및 폭발탄 총알 수 조절 (폭발탄 시 절반)
+        # 사격
         shoot_timer += dt
         if shoot_timer >= shoot_interval and enemies:
             shoot_timer = 0.0
@@ -218,7 +218,7 @@ while running:
                     angle = base_angle + (b_idx - (active_bullet_count - 1) / 2) * 0.15
                     bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * bullet_speed, "vy": math.sin(angle) * bullet_speed, "pierce": pierce_count, "damage": 1 + pierce_count, "can_split": True, "hit_enemies": set()})
 
-        # 총알 충돌 & 관통력당 폭발 범위 +10% 가산 적용
+        # 총알 충돌
         current_exp_radius = base_explosion_radius * (1.0 + 0.10 * pierce_count)
         exp_sq = current_exp_radius**2
         exp_damage = 1 + pierce_count
@@ -320,17 +320,34 @@ while running:
     pygame.draw.rect(screen, (70, 70, 70), lang_button_rect)
     screen.blit(config.font.render(f"[{current_lang}]", True, (255, 255, 255)), (lang_button_rect.x + 15, lang_button_rect.y + 4))
 
-    # 우측 정보 패널
+    # 우측 정보 패널 (모든 스탯 표시)
     pygame.draw.rect(screen, (20, 20, 25), (config.GAME_WIDTH, 0, config.UI_PANEL_WIDTH, config.SCREEN_HEIGHT))
-    screen.blit(config.bold_font.render("랭킹 (Top 5)", True, (255, 215, 0)), (config.GAME_WIDTH + 15, 15))
+    screen.blit(config.bold_font.render("랭킹 (Top 5)", True, (255, 215, 0)), (config.GAME_WIDTH + 15, 10))
     for idx, r in enumerate(rankings[:5]):
-        screen.blit(config.font.render(f"{idx+1}. Lv.{r['level']} | {r['kills']}K", True, (200, 200, 200)), (config.GAME_WIDTH + 10, 45 + idx * 25))
+        screen.blit(config.font.render(f"{idx+1}. Lv.{r['level']} | {r['kills']}K", True, (200, 200, 200)), (config.GAME_WIDTH + 10, 32 + idx * 22))
 
-    screen.blit(config.bold_font.render("캐릭터 스탯", True, (100, 200, 255)), (config.GAME_WIDTH + 15, 195))
+    screen.blit(config.bold_font.render("캐릭터 스탯", True, (100, 200, 255)), (config.GAME_WIDTH + 15, 150))
     disp_bc = max(1, bullet_count // 2) if bullet_type == 'EXPLOSIVE' else bullet_count
-    stats = [f"탄종: {bullet_type}", f"HP: {int(player_hp)}/{max_hp}", f"총알: {disp_bc}개", f"관통: {pierce_count}", f"폭발범위: {int(current_exp_radius)}"]
+    
+    # 총 12가지 모든 주요 스탯 항목 추가
+    stats = [
+        f"탄종: {bullet_type}",
+        f"체력: {int(player_hp)}/{max_hp}",
+        f"초당 회복: +{hp_regen}/s",
+        f"이동 속도: {int(move_speed)}",
+        f"공격 간격: {shoot_interval:.2f}s",
+        f"발사 방향: {fire_directions}방향",
+        f"발사 개수: {disp_bc}개",
+        f"관통력: {pierce_count}",
+        f"적중 분열: +{split_count}개",
+        f"투사체 속도: {int(bullet_speed)}",
+        f"폭발 범위: {int(current_exp_radius)}",
+        f"획득 범위: {int(magnet_radius)}",
+        f"적 속도율: {int(enemy_speed_mult * 100)}%"
+    ]
+    
     for idx, st in enumerate(stats):
-        screen.blit(config.font.render(st, True, (220, 220, 220)), (config.GAME_WIDTH + 12, 225 + idx * 24))
+        screen.blit(config.font.render(st, True, (220, 220, 220)), (config.GAME_WIDTH + 12, 175 + idx * 21))
 
     # 팝업 처리
     if is_upgrading and not is_game_over:
