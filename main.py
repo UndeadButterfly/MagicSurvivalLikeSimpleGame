@@ -8,7 +8,7 @@ import os
 pygame.init()
 pygame.font.init()
 
-# 화면 확장: 800(게임 화면) + 200(오른쪽 랭킹 패널) = 1000 x 600
+# 화면 확장: 800(게임 화면) + 200(오른쪽 패널) = 1000 x 600
 GAME_WIDTH = 800
 UI_PANEL_WIDTH = 200
 SCREEN_WIDTH = GAME_WIDTH + UI_PANEL_WIDTH
@@ -30,11 +30,11 @@ def get_korean_font(size):
     except:
         return pygame.font.SysFont(None, size)
 
-font = get_korean_font(18)
-bold_font = get_korean_font(20)
-title_font = get_korean_font(36)
+font = get_korean_font(16)
+bold_font = get_korean_font(18)
+title_font = get_korean_font(32)
 
-# --- [랭킹 파일 입출력] ---
+# --- [랭킹 파일 입출력 (스탯 데이터 포함)] ---
 RANKING_FILE = "rankings.txt"
 
 def load_rankings():
@@ -44,25 +44,29 @@ def load_rankings():
             with open(RANKING_FILE, "r", encoding="utf-8") as f:
                 for line in f:
                     parts = line.strip().split(",")
-                    if len(parts) == 2:
-                        ranks.append((int(parts[0]), float(parts[1])))
+                    if len(parts) >= 3:
+                        level = int(parts[0])
+                        kills = int(parts[1])
+                        ptime = float(parts[2])
+                        stats_str = parts[3] if len(parts) > 3 else ""
+                        ranks.append({"level": level, "kills": kills, "time": ptime, "stats": stats_str})
         except Exception as e:
             print(f"랭킹 로드 실패: {e}")
-    ranks.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    ranks.sort(key=lambda x: (x["kills"], x["time"]), reverse=True)
     return ranks
 
 def save_rankings(ranks):
     try:
         with open(RANKING_FILE, "w", encoding="utf-8") as f:
-            for kill_c, p_time in ranks:
-                f.write(f"{kill_c},{p_time:.2f}\n")
+            for r in ranks:
+                f.write(f"{r['level']},{r['kills']},{r['time']:.2f},{r['stats']}\n")
     except Exception as e:
         print(f"랭킹 저장 실패: {e}")
 
 rankings = load_rankings()
 
 def reset_game():
-    global player, enemies, bullets, potions, loot_items, explosions
+    global player, enemies, bullets, potions, loot_items, explosions, hit_effects, damage_rings
     global spawn_timer, shoot_timer, potion_timer
     global max_hp, player_hp, hp_regen, move_speed, pierce_count, bullet_count, shoot_interval, fire_directions, split_count, enemy_speed_mult
     global has_explosion, explosion_radius, magnet_radius
@@ -75,6 +79,8 @@ def reset_game():
     potions = []
     loot_items = []
     explosions = []
+    hit_effects = []   # 피격/타격 이펙트
+    damage_rings = []  # 캐릭터 피격 이펙트
 
     spawn_timer = 0
     shoot_timer = 0
@@ -122,30 +128,62 @@ def add_kills_and_check_upgrade(amount):
         for loot in loot_items:
             loot["magnetized"] = True
 
-        avail = get_available_upgrades()
-        upgrade_options = random.sample(avail, min(3, len(avail)))
+        upgrade_options = generate_upgrade_options()
         selected_option_index = 0
 
-def get_available_upgrades():
+def get_base_upgrades():
     upgrades = [
-        {"id": 1, "text_kor": "1. 관통력 +1", "text_eng": "1. Pierce +1"},
-        {"id": 2, "text_kor": "2. 개수 +1", "text_eng": "2. Bullet Count +1"},
-        {"id": 3, "text_kor": "3. 공격 간격 -10%", "text_eng": "3. Cooldown -10%"},
-        {"id": 4, "text_kor": "4. 공격 방향 +1", "text_eng": "4. Direction +1"},
-        {"id": 5, "text_kor": "5. 최대 체력 +10", "text_eng": "5. Max HP +10"},
-        {"id": 6, "text_kor": "6. 초당 체력회복 +1", "text_eng": "6. HP Regen +1"},
-        {"id": 8, "text_kor": "8. 전리품 획득 범위 +10%", "text_eng": "8. Magnet Range +10%"},
-        {"id": 10, "text_kor": "10. 이동속도 +20%", "text_eng": "10. Move Speed +20%"},
-        {"id": 11, "text_kor": "11. 적중 시 분열 +1", "text_eng": "11. Bullet Split +1"},
-        {"id": 12, "text_kor": "12. 적 이동속도 -10%", "text_eng": "12. Enemy Speed -10%"}
+        {"id": 1, "text_kor": "관통력 +1", "text_eng": "Pierce +1"},
+        {"id": 2, "text_kor": "개수 +1", "text_eng": "Bullet Count +1"},
+        {"id": 3, "text_kor": "공격 간격 -10%", "text_eng": "Cooldown -10%"},
+        {"id": 4, "text_kor": "공격 방향 +1", "text_eng": "Direction +1"},
+        {"id": 5, "text_kor": "최대 체력 +10", "text_eng": "Max HP +10"},
+        {"id": 6, "text_kor": "초당 체력회복 +1", "text_eng": "HP Regen +1"},
+        {"id": 8, "text_kor": "전리품 획득 범위 +10%", "text_eng": "Magnet Range +10%"},
+        {"id": 10, "text_kor": "이동속도 +20%", "text_eng": "Move Speed +20%"},
+        {"id": 11, "text_kor": "적중 시 분열 +1", "text_eng": "Bullet Split +1"},
+        {"id": 12, "text_kor": "적 이동속도 -10%", "text_eng": "Enemy Speed -10%"}
     ]
     if not has_explosion:
-        upgrades.append({"id": 7, "text_kor": "7. 폭발 데미지 추가", "text_eng": "7. Add Explosion Damage"})
+        upgrades.append({"id": 7, "text_kor": "폭발 데미지 추가", "text_eng": "Add Explosion Damage"})
     else:
-        upgrades.append({"id": 9, "text_kor": "9. 폭발 범위 +20%", "text_eng": "9. Explosion Area +20%"})
+        upgrades.append({"id": 9, "text_kor": "폭발 범위 +20%", "text_eng": "Explosion Area +20%"})
     return upgrades
 
-def apply_upgrade(upgrade_id):
+def generate_upgrade_options():
+    avail = get_base_upgrades()
+    options = []
+    
+    # 3개 선택지 생성
+    for _ in range(min(3, len(avail))):
+        # 30% 확률로 듀얼 옵션 생성
+        if random.random() < 0.30 and len(avail) >= 2:
+            sampled = random.sample(avail, 2)
+            for item in sampled:
+                if item in avail:
+                    avail.remove(item)
+            options.append({
+                "is_dual": True,
+                "ids": [sampled[0]["id"], sampled[1]["id"]],
+                "text_kor": f"[세트] {sampled[0]['text_kor']} + {sampled[1]['text_kor']}",
+                "text_eng": f"[SET] {sampled[0]['text_eng']} + {sampled[1]['text_eng']}"
+            })
+        else:
+            item = random.choice(avail)
+            avail.remove(item)
+            options.append({
+                "is_dual": False,
+                "ids": [item["id"]],
+                "text_kor": item["text_kor"],
+                "text_eng": item["text_eng"]
+            })
+    return options
+
+def apply_upgrade(upgrade_ids):
+    for uid in upgrade_ids:
+        apply_single_upgrade(uid)
+
+def apply_single_upgrade(upgrade_id):
     global pierce_count, bullet_count, shoot_interval, fire_directions, max_hp, player_hp, hp_regen, move_speed, split_count, enemy_speed_mult
     global has_explosion, explosion_radius, magnet_radius
 
@@ -199,14 +237,15 @@ while running:
                 selected_option_index = (selected_option_index + 1) % len(upgrade_options)
             elif event.key == pygame.K_SPACE:
                 chosen_upgrade = upgrade_options[selected_option_index]
-                apply_upgrade(chosen_upgrade["id"])
+                apply_upgrade(chosen_upgrade["ids"])
                 is_upgrading = False
 
     if is_game_over:
         if not record_saved:
-            rankings.append((kill_count, play_time))
-            rankings.sort(key=lambda x: (x[0], x[1]), reverse=True)
-            save_rankings(rankings)  # TXT 파일로 저장
+            stats_summary = f"HP:{max_hp}|SPD:{int(move_speed)}|INT:{shoot_interval:.2f}|Prc:{pierce_count}|Splt:{split_count}"
+            rankings.append({"level": player_level, "kills": kill_count, "time": play_time, "stats": stats_summary})
+            rankings.sort(key=lambda x: (x["kills"], x["time"]), reverse=True)
+            save_rankings(rankings)
             record_saved = True
 
     # --- [메인 게임 업데이트] ---
@@ -255,8 +294,8 @@ while running:
             py = random.randint(50, SCREEN_HEIGHT - 50)
             potions.append(pygame.Rect(px, py, 15, 15))
 
-        # 적 이동 및 충돌
-        base_enemy_damage = 10 + (play_time / 5.0)  # 일회성 접촉 피해량
+        # 적 이동 및 피격 충돌
+        base_enemy_damage = 10 + (play_time / 5.0)
         for enemy in enemies[:]:
             if enemy["is_elite"]:
                 enemy["rect"].x += enemy["vx"] * enemy_speed_mult * dt
@@ -269,10 +308,11 @@ while running:
                     enemy["rect"].x += (dir_x / dist) * 100 * enemy_speed_mult * dt
                     enemy["rect"].y += (dir_y / dist) * 100 * enemy_speed_mult * dt
 
-            # 적이 캐릭터와 부딪히면 데미지 후 사라짐
+            # 캐릭터와 충돌 시 데미지 + 피격 이펙트 + 적 소멸
             if player.colliderect(enemy["rect"]):
                 dmg_mult = 2.0 if enemy["is_elite"] else 1.0
                 player_hp -= base_enemy_damage * dmg_mult
+                damage_rings.append({"x": player.centerx, "y": player.centery, "radius": 15, "timer": 0.2})
                 enemies.remove(enemy)
                 if player_hp <= 0:
                     player_hp = 0
@@ -324,7 +364,7 @@ while running:
                             "hit_enemies": []
                         })
 
-        # 총알 이동 및 충돌
+        # 총알 이동 및 적중 이펙트
         for bullet in bullets[:]:
             bullet["rect"].x += bullet["vx"] * dt
             bullet["rect"].y += bullet["vy"] * dt
@@ -335,6 +375,15 @@ while running:
                     bullet["pierce"] -= 1
 
                     bx, by = bullet["rect"].centerx, bullet["rect"].centery
+
+                    # 적중 파티클 이펙트 추가
+                    for _ in range(5):
+                        hit_effects.append({
+                            "x": bx, "y": by,
+                            "vx": random.uniform(-100, 100),
+                            "vy": random.uniform(-100, 100),
+                            "timer": 0.15
+                        })
 
                     # 분열 로직
                     if bullet.get("can_split", False) and split_count > 0:
@@ -371,7 +420,7 @@ while running:
 
                     enemy["hp"] -= 1
 
-                    # 적 사망 처리 (경험치 드랍률 50%)
+                    # 적 처치 처리 (경험치 드랍률 50%)
                     dead_enemies = [e for e in enemies if e["hp"] <= 0]
                     for d_enemy in dead_enemies:
                         if d_enemy in enemies:
@@ -382,7 +431,6 @@ while running:
                             add_kills_and_check_upgrade(kill_value)
                             enemies.remove(d_enemy)
 
-                            # 경험치(전리품) 드랍률 50%
                             if random.random() < 0.50:
                                 loot_items.append({"x": ex, "y": ey, "value": kill_value, "is_elite": is_elite, "magnetized": False})
 
@@ -391,24 +439,51 @@ while running:
                             bullets.remove(bullet)
                         break
 
+        # 이펙트 타이머 업데이트
         for exp in explosions[:]:
             exp["timer"] -= dt
             if exp["timer"] <= 0:
                 explosions.remove(exp)
 
+        for eff in hit_effects[:]:
+            eff["timer"] -= dt
+            eff["x"] += eff["vx"] * dt
+            eff["y"] += eff["vy"] * dt
+            if eff["timer"] <= 0:
+                hit_effects.remove(eff)
+
+        for ring in damage_rings[:]:
+            ring["timer"] -= dt
+            ring["radius"] += 80 * dt
+            if ring["timer"] <= 0:
+                damage_rings.remove(ring)
+
     # --- [그리기] ---
     screen.fill((30, 30, 30))
 
+    # 플레이어 및 체력바(HP Bar)
     pygame.draw.rect(screen, (0, 255, 0), player)
+    
+    # 머리 위 체력바
+    hp_bar_width = 40
+    hp_bar_height = 6
+    hp_ratio = max(0, player_hp / max_hp)
+    hp_bar_x = player.centerx - hp_bar_width // 2
+    hp_bar_y = player.top - 12
+    pygame.draw.rect(screen, (80, 80, 80), (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
+    pygame.draw.rect(screen, (255, 50, 50), (hp_bar_x, hp_bar_y, int(hp_bar_width * hp_ratio), hp_bar_height))
 
+    # 적 그리기
     for enemy in enemies:
         color = (160, 32, 240) if enemy["is_elite"] else (255, 0, 0)
         pygame.draw.rect(screen, color, enemy["rect"])
 
+    # 총알 그리기
     for bullet in bullets:
         color = (255, 255, 0) if bullet.get("can_split", False) else (255, 165, 0)
         pygame.draw.rect(screen, color, bullet["rect"])
 
+    # 아이템 및 폭발 이펙트
     for potion in potions:
         pygame.draw.rect(screen, (0, 191, 255), potion)
 
@@ -419,40 +494,27 @@ while running:
     for exp in explosions:
         pygame.draw.circle(screen, (255, 140, 0), (int(exp["x"]), int(exp["y"])), int(exp["radius"]), 2)
 
-    # --- [상단 UI 및 좌측 스탯 현황] ---
+    # 적중 이펙트 파티클
+    for eff in hit_effects:
+        pygame.draw.circle(screen, (255, 200, 50), (int(eff["x"]), int(eff["y"])), 2)
+
+    # 피격 이펙트 링
+    for ring in damage_rings:
+        pygame.draw.circle(screen, (255, 0, 0), (int(ring["x"]), int(ring["y"])), int(ring["radius"]), 2)
+
+    # --- [상단 핵심 UI] ---
     minutes = int(play_time) // 60
     seconds = int(play_time) % 60
 
     if current_lang == 'KOR':
         time_str = f"시간: {minutes:02d}:{seconds:02d}"
         kill_str = f"LV.{player_level} | 처치: {kill_count} (다음: {kills_for_next_upgrade})"
-        hp_str = f"체력: {int(player_hp)} / {max_hp}"
     else:
         time_str = f"Time: {minutes:02d}:{seconds:02d}"
         kill_str = f"LV.{player_level} | Kills: {kill_count} (Next: {kills_for_next_upgrade})"
-        hp_str = f"HP: {int(player_hp)} / {max_hp}"
 
     screen.blit(bold_font.render(time_str, True, (255, 255, 255)), (10, 10))
     screen.blit(bold_font.render(kill_str, True, (255, 255, 255)), (10, 32))
-    screen.blit(bold_font.render(hp_str, True, (0, 255, 127)), (10, 54))
-
-    # 좌측 스탯 정보 패널
-    stats_panel = pygame.Surface((180, 175))
-    stats_panel.set_alpha(150)
-    stats_panel.fill((0, 0, 0))
-    screen.blit(stats_panel, (10, 85))
-
-    stats_list = [
-        f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
-        f"공격간격: {shoot_interval:.2f}s" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
-        f"발사방향/개수: {fire_directions} / {bullet_count}" if current_lang == 'KOR' else f"Dir/Count: {fire_directions} / {bullet_count}",
-        f"관통/분열: {pierce_count} / {split_count}" if current_lang == 'KOR' else f"Pierce/Split: {pierce_count} / {split_count}",
-        f"HP 회복: +{hp_regen}/s" if current_lang == 'KOR' else f"HP Regen: +{hp_regen}/s",
-        f"획득 범위: {int(magnet_radius)}" if current_lang == 'KOR' else f"Magnet: {int(magnet_radius)}",
-        f"적 속도: {int(enemy_speed_mult * 100)}%" if current_lang == 'KOR' else f"Enemy Spd: {int(enemy_speed_mult * 100)}%",
-    ]
-    for idx, s_text in enumerate(stats_list):
-        screen.blit(font.render(s_text, True, (200, 220, 255)), (15, 90 + idx * 22))
 
     # [한영 버튼]
     pygame.draw.rect(screen, (70, 70, 70), lang_button_rect)
@@ -460,23 +522,45 @@ while running:
     btn_text = font.render(f"[{current_lang}]", True, (255, 255, 255))
     screen.blit(btn_text, (lang_button_rect.x + 15, lang_button_rect.y + 4))
 
-    # 우측 랭킹 패널
+    # --- [우측 분리 패널 (랭킹 + 캐릭터 스탯 현황)] ---
     panel_rect = pygame.Rect(GAME_WIDTH, 0, UI_PANEL_WIDTH, SCREEN_HEIGHT)
-    pygame.draw.rect(screen, (15, 15, 20), panel_rect)
-    pygame.draw.line(screen, (100, 100, 100), (GAME_WIDTH, 0), (GAME_WIDTH, SCREEN_HEIGHT), 2)
+    pygame.draw.rect(screen, (20, 20, 25), panel_rect)
+    pygame.draw.line(screen, (80, 80, 100), (GAME_WIDTH, 0), (GAME_WIDTH, SCREEN_HEIGHT), 2)
 
+    # 1) 우측 상단 - 랭킹 (레벨, 처치수, 시간만 간결하게 표시)
     rank_title_str = "랭킹 (Top 5)" if current_lang == 'KOR' else "RANKING"
     rank_title = bold_font.render(rank_title_str, True, (255, 215, 0))
-    screen.blit(rank_title, (GAME_WIDTH + 20, 20))
+    screen.blit(rank_title, (GAME_WIDTH + 15, 15))
 
-    for idx, record in enumerate(rankings[:5]):
-        rk_kills, rk_time = record
-        rk_m, rk_s = int(rk_time) // 60, int(rk_time) % 60
-        rank_item_str = f"{idx+1}. {rk_kills}Kills ({rk_m:02d}:{rk_s:02d})"
-        rank_text = font.render(rank_item_str, True, (220, 220, 220))
-        screen.blit(rank_text, (GAME_WIDTH + 15, 60 + idx * 35))
+    for idx, r in enumerate(rankings[:5]):
+        rk_m, rk_s = int(r["time"]) // 60, int(r["time"]) % 60
+        rank_item_str = f"{idx+1}. Lv.{r['level']} | {r['kills']}K ({rk_m:02d}:{rk_s:02d})"
+        rank_text = font.render(rank_item_str, True, (200, 200, 200))
+        screen.blit(rank_text, (GAME_WIDTH + 10, 45 + idx * 25))
 
-    # 레이어 팝업
+    pygame.draw.line(screen, (60, 60, 80), (GAME_WIDTH + 10, 185), (GAME_WIDTH + UI_PANEL_WIDTH - 10, 185), 1)
+
+    # 2) 우측 하단 - 캐릭터 실시간 스탯 현황 (게임을 가리지 않음)
+    stat_title_str = "캐릭터 스탯" if current_lang == 'KOR' else "CHARACTER STATS"
+    stat_title = bold_font.render(stat_title_str, True, (100, 200, 255))
+    screen.blit(stat_title, (GAME_WIDTH + 15, 195))
+
+    stats_list = [
+        f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
+        f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
+        f"공격간격: {shoot_interval:.2f}초" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
+        f"발사방향: {fire_directions}방향" if current_lang == 'KOR' else f"Directions: {fire_directions}",
+        f"총알 개수: {bullet_count}개" if current_lang == 'KOR' else f"Bullets: {bullet_count}",
+        f"관통력: {pierce_count}" if current_lang == 'KOR' else f"Pierce: {pierce_count}",
+        f"분열 수: {split_count}" if current_lang == 'KOR' else f"Splits: {split_count}",
+        f"HP 회복: +{hp_regen}/초" if current_lang == 'KOR' else f"Regen: +{hp_regen}/s",
+        f"획득 범위: {int(magnet_radius)}" if current_lang == 'KOR' else f"Magnet: {int(magnet_radius)}",
+        f"적 속도: {int(enemy_speed_mult * 100)}%" if current_lang == 'KOR' else f"Enemy Spd: {int(enemy_speed_mult * 100)}%",
+    ]
+    for idx, s_text in enumerate(stats_list):
+        screen.blit(font.render(s_text, True, (220, 220, 220)), (GAME_WIDTH + 12, 225 + idx * 24))
+
+    # 레이어 팝업 (레벨업)
     if is_upgrading and not is_game_over:
         overlay = pygame.Surface((GAME_WIDTH, SCREEN_HEIGHT))
         overlay.set_alpha(180)
@@ -485,14 +569,19 @@ while running:
 
         title_str = "레벨 업! 강화 선택" if current_lang == 'KOR' else "LEVEL UP! Choose Option"
         title_text = title_font.render(title_str, True, (255, 215, 0))
-        screen.blit(title_text, (GAME_WIDTH // 2 - title_text.get_width() // 2, 120))
+        screen.blit(title_text, (GAME_WIDTH // 2 - title_text.get_width() // 2, 100))
 
         for idx, option in enumerate(upgrade_options):
             color = (255, 255, 0) if idx == selected_option_index else (255, 255, 255)
             prefix = "-> " if idx == selected_option_index else "   "
             opt_str = option["text_kor"] if current_lang == 'KOR' else option["text_eng"]
+            
+            # 세트 옵션일 경우 하이라이트 색상
+            if option["is_dual"]:
+                color = (255, 180, 0) if idx == selected_option_index else (255, 215, 100)
+
             opt_text = font.render(prefix + opt_str, True, color)
-            screen.blit(opt_text, (200, 240 + idx * 60))
+            screen.blit(opt_text, (120, 220 + idx * 60))
 
     if is_game_over:
         overlay = pygame.Surface((GAME_WIDTH, SCREEN_HEIGHT))
