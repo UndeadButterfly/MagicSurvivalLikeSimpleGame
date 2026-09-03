@@ -65,8 +65,11 @@ while running:
         c = (255, 80, 80) if game.bullet_type == 'EXPLOSIVE' else (255, 255, 0)
         pygame.draw.rect(screen, c, b["rect"])
 
+    # 포션 렌더링 및 제한 시간 표시
     for p in game.potions:
-        pygame.draw.rect(screen, (0, 191, 255), p)
+        pygame.draw.rect(screen, (0, 191, 255), p["rect"])
+        timer_text = config.font.render(f"{int(p['timer'])}s", True, (255, 255, 255))
+        screen.blit(timer_text, (p["rect"].x - 2, p["rect"].y - 15))
 
     for l in game.loot_items:
         pygame.draw.circle(screen, (255, 215, 0) if l["type"] in ("BOSS", "NORMAL") else (255, 105, 180), (int(l["x"]), int(l["y"])), 8 if l["type"] == "BOSS" else 3)

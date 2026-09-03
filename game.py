@@ -25,12 +25,13 @@ class GameState:
         self.shoot_interval = 0.5
         self.fire_directions = 1
         self.split_count = 0
+        self.bonus_damage = 0  # [신규] 추가 공격력
 
         self.bullet_type = 'PIERCE'
         self.base_explosion_radius = 90.0
 
         self.bullet_count_upgrades = self.bullet_speed_upgrades = 0
-        self.split_upgrades = self.player_size_upgrades = 0
+        self.split_upgrades = self.player_size_upgrades = self.bullet_damage_upgrades = 0
         self.magnet_radius = 100.0
         self.magnet_radius_sq = self.magnet_radius ** 2
 
@@ -55,7 +56,8 @@ class GameState:
                 loot["magnetized"] = True
             self.upgrade_options = generate_upgrade_options(
                 self.bullet_count_upgrades, self.split_upgrades,
-                self.bullet_speed_upgrades, self.player_size_upgrades
+                self.bullet_speed_upgrades, self.player_size_upgrades,
+                self.bullet_damage_upgrades
             )
             self.selected_option_index = 0
 
@@ -84,6 +86,10 @@ class GameState:
             self.player = pygame.Rect(0, 0, new_w, new_h)
             self.player.center = old_center
             self.player_size_upgrades += 1
+        elif upgrade_id == 15 and self.bullet_damage_upgrades < 4:
+            # [신규] 공격력 +1
+            self.bonus_damage += 1
+            self.bullet_damage_upgrades += 1
 
     def update(self, dt):
         if self.is_game_over:
@@ -114,10 +120,10 @@ class GameState:
 
         px_c, py_c = self.player.centerx, self.player.centery
 
-        # 적 스폰
+        # 적 스폰 (레벨당 체력 +2 반영)
         spawn_interval = max(0.2, 1.0 - (self.play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(self.play_time / 15.0)
-        base_enemy_hp = 1 + (self.player_level - 1)
+        base_enemy_hp = 1 + (self.player_level - 1) * 2  # [수정] 레벨마다 2씩 상승
         time_damage_bonus = int(self.play_time / 10.0)
 
         self.spawn_timer += dt
@@ -138,10 +144,26 @@ class GameState:
                 else:
                     self.enemies.append({"rect": pygame.Rect(ex, ey, 16, 16), "hp": base_enemy_hp, "max_hp": base_enemy_hp, "base_size": 16, "type": "NORMAL", "damage": 1 + time_damage_bonus, "vx": 0, "vy": 0})
 
+        # 포션 생성 (120초 제한 시간 타이머 설정)
         self.potion_timer += dt
         if self.potion_timer >= 10.0:
             self.potion_timer = 0.0
-            self.potions.append(pygame.Rect(random.randint(50, config.GAME_WIDTH - 50), random.randint(50, config.SCREEN_HEIGHT - 50), 15, 15))
+            p_rect = pygame.Rect(random.randint(50, config.GAME_WIDTH - 50), random.randint(50, config.SCREEN_HEIGHT - 50), 15, 15)
+            self.potions.append({"rect": p_rect, "timer": 120.0})  # [수정] 제한시간 120초(2분)
+
+        # 포션 타이머 감수 및 소멸 처리
+        p_idx = 0
+        while p_idx < len(self.potions):
+            potion = self.potions[p_idx]
+            potion["timer"] -= dt
+            if potion["timer"] <= 0:
+                self.potions.pop(p_idx)
+            else:
+                if self.player.colliderect(potion["rect"]):
+                    self.player_hp = min(self.max_hp, self.player_hp + 50)
+                    self.potions.pop(p_idx)
+                else:
+                    p_idx += 1
 
         # 적 이동 및 충돌
         i = 0
@@ -183,12 +205,7 @@ class GameState:
                     self.loot_items.pop(i); continue
             i += 1
 
-        for potion in self.potions[:]:
-            if self.player.colliderect(potion):
-                self.player_hp = min(self.max_hp, self.player_hp + 50)
-                self.potions.remove(potion)
-
-        # 발사
+        # 발사 (보너스 공격력 반영)
         self.shoot_timer += dt
         if self.shoot_timer >= self.shoot_interval and self.enemies:
             self.shoot_timer = 0.0
@@ -199,12 +216,13 @@ class GameState:
                 base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
                 for b_idx in range(active_bc):
                     angle = base_angle + (b_idx - (active_bc - 1) / 2) * 0.15
-                    self.bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * self.bullet_speed, "vy": math.sin(angle) * self.bullet_speed, "pierce": self.pierce_count, "damage": 1 + self.pierce_count, "can_split": True, "hit_enemies": set()})
+                    base_dmg = 1 + self.pierce_count + self.bonus_damage
+                    self.bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * self.bullet_speed, "vy": math.sin(angle) * self.bullet_speed, "pierce": self.pierce_count, "damage": base_dmg, "can_split": True, "hit_enemies": set()})
 
         # 총알 충돌
         current_exp_radius = self.base_explosion_radius * (1.0 + 0.10 * self.pierce_count)
         exp_sq = current_exp_radius**2
-        exp_damage = 1 + self.pierce_count
+        exp_damage = 1 + self.pierce_count + self.bonus_damage
         b_idx = 0
 
         while b_idx < len(self.bullets):
@@ -235,7 +253,7 @@ class GameState:
                         others = sorted([e for e in self.enemies if e != enemy], key=lambda e: (e["rect"].centerx - bx)**2 + (e["rect"].centery - by)**2)
                         for s_i in range(split_num):
                             angle = math.atan2(others[s_i]["rect"].centery - by, others[s_i]["rect"].centerx - bx) if s_i < len(others) else (6.28318 / split_num) * s_i
-                            self.bullets.append({"rect": pygame.Rect(bx, by, 6, 6), "vx": math.cos(angle) * self.bullet_speed * 0.85, "vy": math.sin(angle) * self.bullet_speed * 0.85, "pierce": 1, "damage": 1, "can_split": False, "hit_enemies": set(bullet["hit_enemies"])})
+                            self.bullets.append({"rect": pygame.Rect(bx, by, 6, 6), "vx": math.cos(angle) * self.bullet_speed * 0.85, "vy": math.sin(angle) * self.bullet_speed * 0.85, "pierce": 1, "damage": 1 + self.bonus_damage, "can_split": False, "hit_enemies": set(bullet["hit_enemies"])})
 
                     if self.bullet_type == 'EXPLOSIVE':
                         if len(self.explosions) < 30: self.explosions.append({"x": bx, "y": by, "radius": current_exp_radius, "timer": 0.1})
@@ -290,6 +308,7 @@ class GameState:
             "fire_directions": self.fire_directions,
             "disp_bc": disp_bc,
             "pierce_count": self.pierce_count,
+            "bonus_damage": self.bonus_damage,  # 스탯 패널용
             "split_count": self.split_count,
             "bullet_speed": self.bullet_speed,
             "current_exp_radius": current_exp_radius,

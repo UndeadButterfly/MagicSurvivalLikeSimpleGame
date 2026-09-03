@@ -1,6 +1,6 @@
 import random
 
-def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed_upgrades, player_size_upgrades):
+def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed_upgrades, player_size_upgrades, bullet_damage_upgrades):
     pool = [
         {"ids": [1], "text_kor": "[1] 관통력 +1", "text_eng": "[1] Pierce +1"},
         {"ids": [3], "text_kor": "[3] 공격 간격 -10%", "text_eng": "[3] Attack Interval -10%"},
@@ -21,9 +21,12 @@ def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed
     if bullet_speed_upgrades < 3:
         pool.append({"ids": [13], "text_kor": "[13] 투사체 속도 +30%", "text_eng": "[13] Bullet Speed +30%"})
 
-    # [신규] 캐릭터 크기 감소 업그레이드 (최대 2회)
     if player_size_upgrades < 2:
         pool.append({"ids": [14], "text_kor": "[14] 캐릭터 크기 -20%", "text_eng": "[14] Player Size -20%"})
+
+    # [신규] 투사체 공격력 +1 (최대 4회)
+    if bullet_damage_upgrades < 4:
+        pool.append({"ids": [15], "text_kor": "[15] 투사체 공격력 +1", "text_eng": "[15] Bullet Damage +1"})
 
     if len(pool) < 3:
         return pool

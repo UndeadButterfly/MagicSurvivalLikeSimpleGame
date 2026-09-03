@@ -31,6 +31,7 @@ def draw_stats_panel(screen, rankings, stats_dict):
         f"발사 방향: {stats_dict['fire_directions']}방향",
         f"발사 개수: {stats_dict['disp_bc']}개",
         f"관통력: {stats_dict['pierce_count']}",
+        f"추가 공격력: +{stats_dict['bonus_damage']}",
         f"적중 분열: +{stats_dict['split_count']}개",
         f"투사체 속도: {int(stats_dict['bullet_speed'])}",
         f"폭발 범위: {int(stats_dict['current_exp_radius'])}",
@@ -39,7 +40,7 @@ def draw_stats_panel(screen, rankings, stats_dict):
     ]
 
     for idx, st in enumerate(stats):
-        screen.blit(config.font.render(st, True, (220, 220, 220)), (config.GAME_WIDTH + 12, 175 + idx * 21))
+        screen.blit(config.font.render(st, True, (220, 220, 220)), (config.GAME_WIDTH + 12, 175 + idx * 20))
 
 def draw_upgrade_popup(screen, upgrade_options, selected_index):
     overlay = pygame.Surface((config.GAME_WIDTH, config.SCREEN_HEIGHT))
