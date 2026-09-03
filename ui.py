@@ -63,3 +63,26 @@ def draw_game_over(screen):
     screen.blit(overlay, (0, 0))
     screen.blit(config.title_font.render("GAME OVER", True, (255, 50, 50)), (config.GAME_WIDTH // 2 - 120, 200))
     screen.blit(config.bold_font.render("[R] 재시작  |  [Q] 게임 종료", True, (255, 255, 255)), (config.GAME_WIDTH // 2 - 110, 270))
+
+# ui.py 하단 또는 적절한 위치에 추가
+
+def draw_player_hp_bar(screen, player_rect, current_hp, max_hp):
+    if max_hp <= 0:
+        return
+    
+    # 체력바 크기 설정
+    bar_width = player_rect.width
+    bar_height = 5
+    bar_x = player_rect.x
+    bar_y = player_rect.y - 8  # 플레이어 캐릭터 8픽셀 위
+
+    # 체력 비율 계산 (0 ~ 1)
+    hp_ratio = max(0.0, min(1.0, current_hp / max_hp))
+
+    # 배경(빨간색: 손실된 체력) 및 현재 체력(초록색)
+    bg_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
+    fill_rect = pygame.Rect(bar_x, bar_y, int(bar_width * hp_ratio), bar_height)
+
+    pygame.draw.rect(screen, (200, 0, 0), bg_rect)       # 빨간 배경
+    pygame.draw.rect(screen, (0, 220, 0), fill_rect)     # 초록 게이지
+    pygame.draw.rect(screen, (0, 0, 0), bg_rect, 1)      # 검은색 테두리

@@ -60,6 +60,13 @@ while running:
     player_color = (255, 255, 0) if (game.invincible_timer > 0 and int(game.invincible_timer * 10) % 2 == 0) else (0, 255, 0)
     pygame.draw.rect(screen, player_color, game.player)
 
+    # 1. 플레이어 렌더링
+    player_color = (255, 255, 0) if (game.invincible_timer > 0 and int(game.invincible_timer * 10) % 2 == 0) else (0, 255, 0)
+    pygame.draw.rect(screen, player_color, game.player)
+
+    # 2. [신규 추가] 플레이어 상단 체력바 시각화
+    ui.draw_player_hp_bar(screen, game.player, game.player_hp, game.max_hp)
+
     # 적 렌더링 (스페셜 보스는 붉은주황색)
     for e in game.enemies:
         if e["type"] == "SPECIAL_BOSS":
