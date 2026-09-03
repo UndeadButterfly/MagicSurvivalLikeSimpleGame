@@ -151,7 +151,7 @@ def get_base_upgrades():
         {"id": 5, "text_kor": "최대 체력 +10", "text_eng": "Max HP +10"},
         {"id": 6, "text_kor": "초당 체력회복 +1", "text_eng": "HP Regen +1"},
         {"id": 8, "text_kor": "전리품 획득 범위 +10%", "text_eng": "Magnet Range +10%"},
-        {"id": 10, "text_kor": "이동속도 +20%", "text_eng": "Move Speed +20%"},
+        {"id": 10, "text_kor": "이동속도 +20% (최대 500)", "text_eng": "Move Speed +20% (Max 500)"},
         {"id": 12, "text_kor": "적 이동속도 -10%", "text_eng": "Enemy Speed -10%"}
     ]
 
@@ -163,11 +163,6 @@ def get_base_upgrades():
 
     if bullet_speed_upgrades < 3:
         upgrades.append({"id": 13, "text_kor": f"투사체 속도 +30% ({bullet_speed_upgrades}/3)", "text_eng": f"Bullet Speed +30% ({bullet_speed_upgrades}/3)"})
-
-    if bullet_type == 'PIERCE':
-        upgrades.append({"id": 14, "text_kor": "탄종 변경: 폭발탄 (범위/데미지 관통 비례)", "text_eng": "Change Ammo: Explosive (Area/Dmg scale with Pierce)"})
-    else:
-        upgrades.append({"id": 15, "text_kor": "탄종 변경: 관통탄 (순수 관통 위주)", "text_eng": "Change Ammo: Piercing (Focus on Pierce)"})
 
     return upgrades
 
@@ -203,7 +198,7 @@ def apply_upgrade(upgrade_ids):
 
 def apply_single_upgrade(upgrade_id):
     global pierce_count, bullet_count, bullet_speed, shoot_interval, fire_directions, max_hp, player_hp, hp_regen, move_speed, split_count, enemy_speed_mult
-    global bullet_type, magnet_radius, magnet_radius_sq
+    global magnet_radius, magnet_radius_sq
     global bullet_count_upgrades, bullet_speed_upgrades, split_upgrades
 
     if upgrade_id == 1:
@@ -225,7 +220,8 @@ def apply_single_upgrade(upgrade_id):
         magnet_radius *= 1.10
         magnet_radius_sq = magnet_radius * magnet_radius
     elif upgrade_id == 10:
-        move_speed *= 1.20
+        # 이동속도 20% 증가, 상한선 500 적용
+        move_speed = min(500.0, move_speed * 1.20)
     elif upgrade_id == 11:
         if split_upgrades < 4:
             split_count += 1
@@ -236,10 +232,6 @@ def apply_single_upgrade(upgrade_id):
         if bullet_speed_upgrades < 3:
             bullet_speed *= 1.30
             bullet_speed_upgrades += 1
-    elif upgrade_id == 14:
-        bullet_type = 'EXPLOSIVE'
-    elif upgrade_id == 15:
-        bullet_type = 'PIERCE'
 
 def update_enemy_size(enemy):
     ratio = enemy["hp"] / enemy["max_hp"]
@@ -275,6 +267,13 @@ while running:
 
             if is_game_over and event.key == pygame.K_r:
                 reset_game()
+
+            # 1, 2키를 통한 탄종 실시간 전환 (숫자 키 및 Shift 키 조합 고려)
+            if not is_game_over and not is_upgrading:
+                if event.key in (pygame.K_1, pygame.K_EXCLAIM):
+                    bullet_type = 'PIERCE'
+                elif event.key in (pygame.K_2, pygame.K_AT):
+                    bullet_type = 'EXPLOSIVE'
 
         if is_upgrading and not is_game_over and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
@@ -450,7 +449,7 @@ while running:
         # 총알 이동 및 충돌
         b_idx = 0
 
-        # 폭발 탄종 스탯 계산: 관통력만큼 범위 +20%, 데미지 = 1 + pierce_count
+        # 폭발 탄종 스탯 계산
         current_exp_radius = base_explosion_radius * (1.0 + 0.20 * pierce_count)
         exp_sq = current_exp_radius * current_exp_radius
         exp_damage = 1 + pierce_count
@@ -525,7 +524,6 @@ while running:
                         
                         enemy["hp"] -= 1
                     else: # PIERCE 탄종
-                        # 적중 시 현재 데미지 입히고, 관통 시 데미지 1 차감 (최소 1)
                         enemy["hp"] -= bullet["damage"]
                         bullet["damage"] = max(1, bullet["damage"] - 1)
 
@@ -614,10 +612,10 @@ while running:
     seconds = int(play_time) % 60
 
     if current_lang == 'KOR':
-        time_str = f"시간: {minutes:02d}:{seconds:02d} | [ESC]: 포기하기"
+        time_str = f"시간: {minutes:02d}:{seconds:02d} | [1]:관통탄 [2]:폭발탄 | [ESC]:포기"
         kill_str = f"LV.{player_level} | 처치: {kill_count} (다음: {kills_for_next_upgrade})"
     else:
-        time_str = f"Time: {minutes:02d}:{seconds:02d} | [ESC]: Give Up"
+        time_str = f"Time: {minutes:02d}:{seconds:02d} | [1]:Pierce [2]:Exp | [ESC]:Give Up"
         kill_str = f"LV.{player_level} | Kills: {kill_count} (Next: {kills_for_next_upgrade})"
 
     screen.blit(bold_font.render(time_str, True, (255, 255, 255)), (10, 10))
@@ -649,13 +647,16 @@ while running:
 
     curr_time_dmg = 1 + int(play_time / 10.0)
     curr_enemy_hp = 1 + (player_level - 1)
-    type_display = "관통탄" if bullet_type == 'PIERCE' else "폭발탄"
+    type_display = "관통탄 [1]" if bullet_type == 'PIERCE' else "폭발탄 [2]"
     initial_pierce_dmg = 1 + pierce_count
+    
+    # 적 이동속도 감쇄 퍼센트 계산
+    enemy_speed_reduction = int((1.0 - enemy_speed_mult) * 100)
     
     stats_list = [
         f"탄종: {type_display}" if current_lang == 'KOR' else f"Ammo: {bullet_type}",
         f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
-        f"이동속도: {int(move_speed)}" if current_lang == 'KOR' else f"Speed: {int(move_speed)}",
+        f"이동속도: {int(move_speed)}/500" if current_lang == 'KOR' else f"Speed: {int(move_speed)}/500",
         f"공격간격: {shoot_interval:.2f}초" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
         f"발사방향: {fire_directions}방향" if current_lang == 'KOR' else f"Directions: {fire_directions}",
         f"총알 개수: {bullet_count}개 ({bullet_count_upgrades}/5)" if current_lang == 'KOR' else f"Bullets: {bullet_count} ({bullet_count_upgrades}/5)",
@@ -665,6 +666,7 @@ while running:
         f"분열 수: {split_count} ({split_upgrades}/4)" if current_lang == 'KOR' else f"Splits: {split_count} ({split_upgrades}/4)",
         f"폭발 데미지: {exp_damage}" if current_lang == 'KOR' and bullet_type == 'EXPLOSIVE' else f"Exp. Dmg: {exp_damage}" if bullet_type == 'EXPLOSIVE' else "",
         f"적 체력: {curr_enemy_hp}" if current_lang == 'KOR' else f"Enemy HP: {curr_enemy_hp}",
+        f"적 속도: {enemy_speed_mult:.2f}x (-{enemy_speed_reduction}%)" if current_lang == 'KOR' else f"Enemy Spd: {enemy_speed_mult:.2f}x (-{enemy_speed_reduction}%)",
         f"적 공격력: {curr_time_dmg}" if current_lang == 'KOR' else f"Enemy Dmg: {curr_time_dmg}",
     ]
     for idx, s_text in enumerate(stats_list):
