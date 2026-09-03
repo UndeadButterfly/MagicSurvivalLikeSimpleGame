@@ -220,7 +220,6 @@ def apply_single_upgrade(upgrade_id):
         magnet_radius *= 1.10
         magnet_radius_sq = magnet_radius * magnet_radius
     elif upgrade_id == 10:
-        # 이동속도 20% 증가, 상한선 500 적용
         move_speed = min(500.0, move_speed * 1.20)
     elif upgrade_id == 11:
         if split_upgrades < 4:
@@ -268,7 +267,6 @@ while running:
             if is_game_over and event.key == pygame.K_r:
                 reset_game()
 
-            # 1, 2키를 통한 탄종 실시간 전환 (숫자 키 및 Shift 키 조합 고려)
             if not is_game_over and not is_upgrading:
                 if event.key in (pygame.K_1, pygame.K_EXCLAIM):
                     bullet_type = 'PIERCE'
@@ -317,6 +315,12 @@ while running:
 
         base_enemy_hp = 1 + (player_level - 1)
 
+        # 시간 비례 데미지 설정
+        time_damage_bonus = int(play_time / 10.0)
+        base_normal_damage = 1 + time_damage_bonus
+        base_elite_damage = 5 + time_damage_bonus
+        base_boss_damage = base_elite_damage * 5  # 보스 공격력: 엘리트의 5배
+
         spawn_timer += dt
         if spawn_timer >= spawn_interval and len(enemies) < 250:
             spawn_timer = 0.0
@@ -325,8 +329,21 @@ while running:
                 ex = px_c + math.cos(angle) * 500
                 ey = py_c + math.sin(angle) * 500
 
-                is_elite = random.random() < 0.1
-                if is_elite:
+                rand_val = random.random()
+                if rand_val < 0.05:  # 5% 확률 보스 몹
+                    elite_hp = base_enemy_hp + 9
+                    boss_hp = elite_hp * 5  # 보스 체력: 엘리트의 5배
+                    enemies.append({
+                        "rect": pygame.Rect(ex, ey, 36, 36),
+                        "hp": boss_hp,
+                        "max_hp": boss_hp,
+                        "base_size": 36,
+                        "type": "BOSS",
+                        "damage": base_boss_damage,
+                        "vx": 0,
+                        "vy": 0
+                    })
+                elif rand_val < 0.15:  # 10% 확률 엘리트 몹
                     dir_x, dir_y = px_c - ex, py_c - ey
                     dist = math.hypot(dir_x, dir_y)
                     vx = (dir_x / dist) * 200 if dist > 0 else 200
@@ -337,18 +354,20 @@ while running:
                         "hp": hp,
                         "max_hp": hp,
                         "base_size": 24,
-                        "is_elite": True,
+                        "type": "ELITE",
+                        "damage": base_elite_damage,
                         "vx": vx,
                         "vy": vy
                     })
-                else:
+                else:  # 일반 몹
                     hp = base_enemy_hp
                     enemies.append({
                         "rect": pygame.Rect(ex, ey, 16, 16),
                         "hp": hp,
                         "max_hp": hp,
                         "base_size": 16,
-                        "is_elite": False,
+                        "type": "NORMAL",
+                        "damage": base_normal_damage,
                         "vx": 0,
                         "vy": 0
                     })
@@ -359,20 +378,26 @@ while running:
             potion_timer = 0.0
             potions.append(pygame.Rect(random.randint(50, GAME_WIDTH - 50), random.randint(50, SCREEN_HEIGHT - 50), 15, 15))
 
-        # 적 공격력
-        time_damage_bonus = int(play_time / 10.0)
-        base_normal_damage = 1 + time_damage_bonus
-        base_elite_damage = 5 + time_damage_bonus
-
         # 적 이동 및 플레이어 충돌
         i = 0
         while i < len(enemies):
             enemy = enemies[i]
             er = enemy["rect"]
-            if enemy["is_elite"]:
+            
+            if enemy["type"] == "ELITE":
                 er.x += enemy["vx"] * enemy_speed_mult * dt
                 er.y += enemy["vy"] * enemy_speed_mult * dt
+            elif enemy["type"] == "BOSS":
+                # 보스 이동속도: 일반 몹 속도(100)의 70%
+                dir_x = px_c - er.centerx
+                dir_y = py_c - er.centery
+                dist_sq = dir_x * dir_x + dir_y * dir_y
+                if dist_sq > 0:
+                    dist = math.sqrt(dist_sq)
+                    er.x += (dir_x / dist) * 70 * enemy_speed_mult * dt
+                    er.y += (dir_y / dist) * 70 * enemy_speed_mult * dt
             else:
+                # 일반 몹
                 dir_x = px_c - er.centerx
                 dir_y = py_c - er.centery
                 dist_sq = dir_x * dir_x + dir_y * dir_y
@@ -382,8 +407,7 @@ while running:
                     er.y += (dir_y / dist) * 100 * enemy_speed_mult * dt
 
             if player.colliderect(er):
-                damage = base_elite_damage if enemy["is_elite"] else base_normal_damage
-                player_hp -= damage
+                player_hp -= enemy["damage"]
                 damage_rings.append({"x": px_c, "y": py_c, "radius": 15, "timer": 0.2})
                 enemies.pop(i)
                 if player_hp <= 0:
@@ -428,20 +452,23 @@ while running:
             sorted_enemies = sorted(enemies, key=lambda e: (e["rect"].centerx - px_c)**2 + (e["rect"].centery - py_c)**2)
             target_enemies = sorted_enemies[:fire_directions]
 
+            # 폭발탄 전환 시 발사할 총알 수 절반으로 감소
+            active_bullet_count = max(1, bullet_count // 2) if bullet_type == 'EXPLOSIVE' else bullet_count
+
             for target in target_enemies:
                 dir_x = target["rect"].centerx - px_c
                 dir_y = target["rect"].centery - py_c
                 if dir_x != 0 or dir_y != 0:
                     base_angle = math.atan2(dir_y, dir_x)
-                    for b_idx in range(bullet_count):
-                        angle_offset = (b_idx - (bullet_count - 1) / 2) * 0.15
+                    for b_idx in range(active_bullet_count):
+                        angle_offset = (b_idx - (active_bullet_count - 1) / 2) * 0.15
                         final_angle = base_angle + angle_offset
                         bullets.append({
                             "rect": pygame.Rect(px_c, py_c, 8, 8),
                             "vx": math.cos(final_angle) * bullet_speed,
                             "vy": math.sin(final_angle) * bullet_speed,
                             "pierce": pierce_count,
-                            "damage": 1 + pierce_count,  # 관통탄 초기 데미지: 1 + 관통력
+                            "damage": 1 + pierce_count,
                             "can_split": True,
                             "hit_enemies": set()
                         })
@@ -449,8 +476,8 @@ while running:
         # 총알 이동 및 충돌
         b_idx = 0
 
-        # 폭발 탄종 스탯 계산
-        current_exp_radius = base_explosion_radius * (1.0 + 0.20 * pierce_count)
+        # 폭발 범위 계산: 관통력 1당 +10%만 증가
+        current_exp_radius = base_explosion_radius * (1.0 + 0.10 * pierce_count)
         exp_sq = current_exp_radius * current_exp_radius
         exp_damage = 1 + pierce_count
 
@@ -532,13 +559,19 @@ while running:
 
                     if enemy["hp"] <= 0:
                         ex, ey = er.centerx, er.centery
-                        is_elite = enemy["is_elite"]
-                        kill_val = 5 if is_elite else 1
+                        
+                        if enemy["type"] == "BOSS":
+                            kill_val = 25
+                        elif enemy["type"] == "ELITE":
+                            kill_val = 5
+                        else:
+                            kill_val = 1
+
                         add_kills_and_check_upgrade(kill_val)
                         enemies.pop(e_idx)
 
                         if random.random() < 0.50 and len(loot_items) < 150:
-                            loot_items.append({"x": ex, "y": ey, "value": kill_val, "is_elite": is_elite, "magnetized": False})
+                            loot_items.append({"x": ex, "y": ey, "value": kill_val, "type": enemy["type"], "magnetized": False})
                     else:
                         e_idx += 1
 
@@ -581,7 +614,13 @@ while running:
     pygame.draw.rect(screen, (255, 50, 50), (hp_bar_x, hp_bar_y, int(40 * hp_ratio), 6))
 
     for enemy in enemies:
-        color = (160, 32, 240) if enemy["is_elite"] else (255, 0, 0)
+        if enemy["type"] == "BOSS":
+            color = (255, 215, 0)  # 보스: 금색
+        elif enemy["type"] == "ELITE":
+            color = (160, 32, 240) # 엘리트: 보라색
+        else:
+            color = (255, 0, 0)    # 일반: 빨간색
+            
         pygame.draw.rect(screen, color, enemy["rect"])
 
     for bullet in bullets:
@@ -595,8 +634,17 @@ while running:
         pygame.draw.rect(screen, (0, 191, 255), potion)
 
     for loot in loot_items:
-        color = (255, 105, 180) if loot["is_elite"] else (255, 215, 0)
-        pygame.draw.circle(screen, color, (int(loot["x"]), int(loot["y"])), 5 if loot["is_elite"] else 3)
+        l_type = loot.get("type", "NORMAL")
+        if l_type == "BOSS":
+            color = (255, 215, 0)
+            radius = 8
+        elif l_type == "ELITE":
+            color = (255, 105, 180)
+            radius = 5
+        else:
+            color = (255, 215, 0)
+            radius = 3
+        pygame.draw.circle(screen, color, (int(loot["x"]), int(loot["y"])), radius)
 
     for exp in explosions:
         pygame.draw.circle(screen, (255, 140, 0), (int(exp["x"]), int(exp["y"])), int(exp["radius"]), 2)
@@ -650,16 +698,18 @@ while running:
     type_display = "관통탄 [1]" if bullet_type == 'PIERCE' else "폭발탄 [2]"
     initial_pierce_dmg = 1 + pierce_count
     
-    # 적 이동속도 감쇄 퍼센트 계산
     enemy_speed_reduction = int((1.0 - enemy_speed_mult) * 100)
     
+    # 폭발탄 시 화면에 표시되는 발사 총알 개수 계산
+    disp_bullet_count = max(1, bullet_count // 2) if bullet_type == 'EXPLOSIVE' else bullet_count
+
     stats_list = [
         f"탄종: {type_display}" if current_lang == 'KOR' else f"Ammo: {bullet_type}",
         f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
         f"이동속도: {int(move_speed)}/500" if current_lang == 'KOR' else f"Speed: {int(move_speed)}/500",
         f"공격간격: {shoot_interval:.2f}초" if current_lang == 'KOR' else f"Cooldown: {shoot_interval:.2f}s",
         f"발사방향: {fire_directions}방향" if current_lang == 'KOR' else f"Directions: {fire_directions}",
-        f"총알 개수: {bullet_count}개 ({bullet_count_upgrades}/5)" if current_lang == 'KOR' else f"Bullets: {bullet_count} ({bullet_count_upgrades}/5)",
+        f"총알 개수: {disp_bullet_count}개 ({bullet_count_upgrades}/5)" if current_lang == 'KOR' else f"Bullets: {disp_bullet_count} ({bullet_count_upgrades}/5)",
         f"투사체 속도: {int(bullet_speed)} ({bullet_speed_upgrades}/3)" if current_lang == 'KOR' else f"B.Speed: {int(bullet_speed)} ({bullet_speed_upgrades}/3)",
         f"관통력: {pierce_count}" if current_lang == 'KOR' else f"Pierce: {pierce_count}",
         f"초기 데미지: {initial_pierce_dmg}" if current_lang == 'KOR' and bullet_type == 'PIERCE' else f"Init Dmg: {initial_pierce_dmg}" if bullet_type == 'PIERCE' else "",
