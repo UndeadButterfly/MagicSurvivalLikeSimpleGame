@@ -72,7 +72,7 @@ def reset_game():
     global play_time, kill_count, kills_for_next_upgrade, player_level
     global is_upgrading, is_game_over, record_saved
 
-    player = pygame.Rect(400, 300, 30, 30)  # 캐릭터 크기 30x30
+    player = pygame.Rect(400, 300, 30, 30)
     enemies = []
     bullets = []
     potions = []
@@ -97,14 +97,12 @@ def reset_game():
     fire_directions = 1
     split_count = 0
 
-    # 탄종 설정 ('PIERCE' 또는 'EXPLOSIVE')
     bullet_type = 'PIERCE'
-    base_explosion_radius = 30.0 * 3.0  # 기본 폭발 범위: 90.0
+    base_explosion_radius = 30.0 * 3.0
 
-    # 업그레이드 제한 카운터
-    bullet_count_upgrades = 0  # 최대 5회
-    bullet_speed_upgrades = 0  # 최대 3회
-    split_upgrades = 0         # 최대 4회
+    bullet_count_upgrades = 0
+    bullet_speed_upgrades = 0
+    split_upgrades = 0
 
     magnet_radius = 100.0
     magnet_radius_sq = magnet_radius * magnet_radius
@@ -157,19 +155,15 @@ def get_base_upgrades():
         {"id": 12, "text_kor": "적 이동속도 -10%", "text_eng": "Enemy Speed -10%"}
     ]
 
-    # 개수 +2 (최대 5회)
     if bullet_count_upgrades < 5:
         upgrades.append({"id": 2, "text_kor": f"개수 +2 ({bullet_count_upgrades}/5)", "text_eng": f"Bullet Count +2 ({bullet_count_upgrades}/5)"})
 
-    # 적중 시 분열 +1 (최대 4회)
     if split_upgrades < 4:
         upgrades.append({"id": 11, "text_kor": f"적중 시 분열 +1 ({split_upgrades}/4)", "text_eng": f"Bullet Split +1 ({split_upgrades}/4)"})
 
-    # 투사체 속도 +30% (최대 3회)
     if bullet_speed_upgrades < 3:
         upgrades.append({"id": 13, "text_kor": f"투사체 속도 +30% ({bullet_speed_upgrades}/3)", "text_eng": f"Bullet Speed +30% ({bullet_speed_upgrades}/3)"})
 
-    # 탄종 변경 옵션
     if bullet_type == 'PIERCE':
         upgrades.append({"id": 14, "text_kor": "탄종 변경: 폭발탄 (범위/데미지 관통 비례)", "text_eng": "Change Ammo: Explosive (Area/Dmg scale with Pierce)"})
     else:
@@ -448,6 +442,7 @@ while running:
                             "vx": math.cos(final_angle) * bullet_speed,
                             "vy": math.sin(final_angle) * bullet_speed,
                             "pierce": pierce_count,
+                            "damage": 1 + pierce_count,  # 관통탄 초기 데미지: 1 + 관통력
                             "can_split": True,
                             "hit_enemies": set()
                         })
@@ -479,8 +474,7 @@ while running:
 
                 if id(er) not in bullet["hit_enemies"] and br.colliderect(er):
                     bullet["hit_enemies"].add(id(er))
-                    bullet["pierce"] -= 1
-
+                    
                     bx, by = br.centerx, br.centery
 
                     if len(hit_effects) < 100:
@@ -513,11 +507,12 @@ while running:
                                 "vx": math.cos(split_angle) * bullet_speed * 0.85,
                                 "vy": math.sin(split_angle) * bullet_speed * 0.85,
                                 "pierce": 1,
+                                "damage": 1,
                                 "can_split": False,
                                 "hit_enemies": split_hit
                             })
 
-                    # 폭발 연산 (폭발탄일 경우)
+                    # 탄종별 데미지 및 효과 처리
                     if bullet_type == 'EXPLOSIVE':
                         if len(explosions) < 30:
                             explosions.append({"x": bx, "y": by, "radius": current_exp_radius, "timer": 0.1})
@@ -527,8 +522,14 @@ while running:
                             if edx * edx + edy * edy <= exp_sq:
                                 near_enemy["hp"] -= exp_damage
                                 update_enemy_size(near_enemy)
+                        
+                        enemy["hp"] -= 1
+                    else: # PIERCE 탄종
+                        # 적중 시 현재 데미지 입히고, 관통 시 데미지 1 차감 (최소 1)
+                        enemy["hp"] -= bullet["damage"]
+                        bullet["damage"] = max(1, bullet["damage"] - 1)
 
-                    enemy["hp"] -= 1
+                    bullet["pierce"] -= 1
                     update_enemy_size(enemy)
 
                     if enemy["hp"] <= 0:
@@ -586,7 +587,6 @@ while running:
         pygame.draw.rect(screen, color, enemy["rect"])
 
     for bullet in bullets:
-        # 폭발탄일 경우 붉은빛 계열로 표시
         if bullet_type == 'EXPLOSIVE':
             color = (255, 80, 80) if bullet.get("can_split", False) else (255, 0, 0)
         else:
@@ -650,6 +650,8 @@ while running:
     curr_time_dmg = 1 + int(play_time / 10.0)
     curr_enemy_hp = 1 + (player_level - 1)
     type_display = "관통탄" if bullet_type == 'PIERCE' else "폭발탄"
+    initial_pierce_dmg = 1 + pierce_count
+    
     stats_list = [
         f"탄종: {type_display}" if current_lang == 'KOR' else f"Ammo: {bullet_type}",
         f"체력: {int(player_hp)} / {max_hp}" if current_lang == 'KOR' else f"HP: {int(player_hp)} / {max_hp}",
@@ -659,6 +661,7 @@ while running:
         f"총알 개수: {bullet_count}개 ({bullet_count_upgrades}/5)" if current_lang == 'KOR' else f"Bullets: {bullet_count} ({bullet_count_upgrades}/5)",
         f"투사체 속도: {int(bullet_speed)} ({bullet_speed_upgrades}/3)" if current_lang == 'KOR' else f"B.Speed: {int(bullet_speed)} ({bullet_speed_upgrades}/3)",
         f"관통력: {pierce_count}" if current_lang == 'KOR' else f"Pierce: {pierce_count}",
+        f"초기 데미지: {initial_pierce_dmg}" if current_lang == 'KOR' and bullet_type == 'PIERCE' else f"Init Dmg: {initial_pierce_dmg}" if bullet_type == 'PIERCE' else "",
         f"분열 수: {split_count} ({split_upgrades}/4)" if current_lang == 'KOR' else f"Splits: {split_count} ({split_upgrades}/4)",
         f"폭발 데미지: {exp_damage}" if current_lang == 'KOR' and bullet_type == 'EXPLOSIVE' else f"Exp. Dmg: {exp_damage}" if bullet_type == 'EXPLOSIVE' else "",
         f"적 체력: {curr_enemy_hp}" if current_lang == 'KOR' else f"Enemy HP: {curr_enemy_hp}",
