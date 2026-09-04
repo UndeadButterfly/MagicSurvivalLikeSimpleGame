@@ -1,15 +1,17 @@
 import pygame
 import config
 
+# ui.py 수정
+
 def draw_hud(screen, play_time, current_lang, player_level, kill_count, kills_for_next_upgrade, lang_button_rect, invincible_timer=0.0):
     m, s = int(play_time) // 60, int(play_time) % 60
-    time_str = f"시간: {m:02d}:{s:02d} | [1]:관통 [2]:폭발 | [ESC]:포기" if current_lang == 'KOR' else f"Time: {m:02d}:{s:02d} | [1]:Pierce [2]:Exp"
+    # [3]:레이저 안내 추가
+    time_str = f"시간: {m:02d}:{s:02d} | [1]:관통 [2]:폭발 [3]:레이저 | [ESC]:포기" if current_lang == 'KOR' else f"Time: {m:02d}:{s:02d} | [1]:Pierce [2]:Exp [3]:Laser"
     kill_str = f"LV.{player_level} | 처치: {kill_count} (다음: {kills_for_next_upgrade})"
     
     screen.blit(config.bold_font.render(time_str, True, (255, 255, 255)), (10, 10))
     screen.blit(config.bold_font.render(kill_str, True, (255, 255, 255)), (10, 32))
 
-    # [신규] 무적 상태 시간 표시
     if invincible_timer > 0:
         inv_str = f"★ 무적: {invincible_timer:.1f}초"
         screen.blit(config.bold_font.render(inv_str, True, (255, 255, 0)), (10, 54))

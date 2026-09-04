@@ -31,6 +31,7 @@ class GameState:
         self.split_count = 0
         self.bonus_damage = 0
 
+        self.lasers = []  # [신규] 활성화된 레이저 목록 관리
         self.bullet_type = 'PIERCE'
         self.base_explosion_radius = 90.0
 
@@ -132,6 +133,113 @@ class GameState:
 
         px_c, py_c = self.player.centerx, self.player.centery
 
+        # --- 레이저 발사 로직 ---
+        self.shoot_timer += dt
+        if self.shoot_timer >= self.shoot_interval and self.enemies:
+            self.shoot_timer = 0.0
+            sorted_e = sorted(self.enemies, key=lambda e: (e["rect"].centerx - px_c)**2 + (e["rect"].centery - py_c)**2)[:self.fire_directions]
+
+            # 1) 레이저탄 처리
+            if self.bullet_type == 'LASER':
+                base_duration = 2.0 + (self.pierce_count - 1) * 1.5
+                for target in sorted_e:
+                    base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
+                    for b_idx in range(self.bullet_count):
+                        angle = base_angle + (b_idx - (self.bullet_count - 1) / 2) * 0.15
+                        self.lasers.append({
+                            "is_sub": False,
+                            "angle": angle,
+                            "duration": base_duration,
+                            "max_duration": base_duration,
+                            "damage": 1 + self.bonus_damage,
+                            "hit_cooldowns": {},  # 적 ID별 다단히트 쿨다운 (0.1초 마다 데미지)
+                            "can_split": True
+                        })
+            # 2) 일반 관통탄/폭발탄 처리
+            else:
+                for target in sorted_e:
+                    base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
+                    for b_idx in range(self.bullet_count):
+                        angle = base_angle + (b_idx - (self.bullet_count - 1) / 2) * 0.15
+                        base_dmg = 1 + self.pierce_count + self.bonus_damage
+                        self.bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * self.bullet_speed, "vy": math.sin(angle) * self.bullet_speed, "pierce": self.pierce_count, "damage": base_dmg, "can_split": True, "hit_enemies": set()})
+
+        # --- 레이저 업데이트 및 충돌 검사 ---
+        l_idx = 0
+        while l_idx < len(self.lasers):
+            laser = self.lasers[l_idx]
+            laser["duration"] -= dt
+            if laser["duration"] <= 0:
+                self.lasers.pop(l_idx)
+                continue
+
+            # 시작점 설정 (본체 레이저는 플레이어 중심, 분열 레이저는 생성된 원본 위치)
+            lx, ly = (px_c, py_c) if not laser["is_sub"] else (laser["x"], laser["y"])
+            laser_length = 800.0
+            ex_end = lx + math.cos(laser["angle"]) * laser_length
+            ey_end = ly + math.sin(laser["angle"]) * laser_length
+
+            # 쿨다운 감쇠
+            for eid in list(laser["hit_cooldowns"].keys()):
+                laser["hit_cooldowns"][eid] -= dt
+                if laser["hit_cooldowns"][eid] <= 0:
+                    del laser["hit_cooldowns"][eid]
+
+            # 적 충돌 검사 (선분-선분/선분-사각 단순 거리 연산)
+            e_idx = 0
+            while e_idx < len(self.enemies):
+                enemy = self.enemies[e_idx]
+                er = enemy["rect"]
+                eid = id(er)
+
+                # 레이저 선분과 적 중심점 간의 거리 계산
+                cx, cy = er.centerx, er.centery
+                # 점과 선분 사이의 거리 구하기
+                dx, dy = ex_end - lx, ey_end - ly
+                if dx == 0 and dy == 0:
+                    dist = math.hypot(cx - lx, cy - ly)
+                else:
+                    t = max(0, min(1, ((cx - lx) * dx + (cy - ly) * dy) / (dx*dx + dy*dy)))
+                    nx, ny = lx + t * dx, ly + t * dy
+                    dist = math.hypot(cx - nx, cy - ny)
+
+                # 적의 판정 범위를 고려한 타격 (반지름 이내)
+                if dist <= (er.width / 2 + 5):
+                    if eid not in laser["hit_cooldowns"]:
+                        laser["hit_cooldowns"][eid] = 0.15  # 0.15초마다 연속 타격
+                        enemy["hp"] -= laser["damage"]
+                        update_enemy_size(enemy)
+
+                        # [분열] 피격된 적을 중심으로 지속시간 절반의 레이저 분열
+                        if laser.get("can_split", False) and self.split_count > 0:
+                            split_num = self.split_count
+                            sub_duration = laser["duration"] * 0.5  # 본체 남은 지속시간의 절반
+                            if sub_duration > 0.2:  # 최소 지속시간 보장
+                                others = sorted([e for e in self.enemies if e != enemy], key=lambda e: (e["rect"].centerx - cx)**2 + (e["rect"].centery - cy)**2)
+                                for s_i in range(split_num):
+                                    sub_angle = math.atan2(others[s_i]["rect"].centery - cy, others[s_i]["rect"].centerx - cx) if s_i < len(others) else laser["angle"] + (s_i + 1) * 0.5
+                                    self.lasers.append({
+                                        "is_sub": True,
+                                        "x": cx, "y": cy,
+                                        "angle": sub_angle,
+                                        "duration": sub_duration,
+                                        "max_duration": sub_duration,
+                                        "damage": max(1, laser["damage"] // 2 + self.bonus_damage),
+                                        "hit_cooldowns": {},
+                                        "can_split": False
+                                    })
+
+                        if enemy["hp"] <= 0:
+                            val = 75 if enemy["type"] == "SPECIAL_BOSS" else (25 if enemy["type"] == "BOSS" else (5 if enemy["type"] == "ELITE" else 1))
+                            self.add_kills_and_check_upgrade(val)
+                            self.enemies.pop(e_idx)
+                            if random.random() < 0.50 and len(self.loot_items) < 150:
+                                self.loot_items.append({"x": cx, "y": cy, "value": val, "type": enemy["type"], "magnetized": False})
+                        else: e_idx += 1
+                    else: e_idx += 1
+                else: e_idx += 1
+            l_idx += 1
+        
         # 적 스폰 (스페셜 보스 추가)
         spawn_interval = max(0.2, 1.0 - (self.play_time / 60.0) * 0.4)
         spawn_amount = 1 + int(self.play_time / 15.0)

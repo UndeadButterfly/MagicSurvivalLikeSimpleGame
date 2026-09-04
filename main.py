@@ -1,3 +1,5 @@
+import math
+
 import pygame
 import config
 from game import GameState
@@ -40,6 +42,8 @@ while running:
                     game.bullet_type = 'PIERCE'
                 elif event.key in (pygame.K_2, pygame.K_AT):
                     game.bullet_type = 'EXPLOSIVE'
+                elif event.key in (pygame.K_3, pygame.K_HASH):
+                    game.bullet_type = 'LASER'
 
             if game.is_upgrading and not game.is_game_over:
                 if event.key == pygame.K_UP:
@@ -55,6 +59,19 @@ while running:
 
     # 렌더링
     screen.fill((30, 30, 30))
+
+    # [신규] 레이저 렌더링
+    for laser in game.lasers:
+        lx, ly = (game.player.centerx, game.player.centery) if not laser["is_sub"] else (laser["x"], laser["y"])
+        end_x = lx + math.cos(laser["angle"]) * 800.0
+        end_y = ly + math.sin(laser["angle"]) * 800.0
+
+        # 투명도 및 두께 표현
+        alpha_ratio = laser["duration"] / laser["max_duration"]
+        width = 6 if not laser["is_sub"] else 3
+        color = (0, 255, 255) if not laser["is_sub"] else (180, 100, 255) # 본체: 청록색, 분열: 보라색
+
+        pygame.draw.line(screen, color, (lx, ly), (end_x, end_y), width)
 
     # 무적 상태일 때는 노란색으로 반짝임
     player_color = (255, 255, 0) if (game.invincible_timer > 0 and int(game.invincible_timer * 10) % 2 == 0) else (0, 255, 0)

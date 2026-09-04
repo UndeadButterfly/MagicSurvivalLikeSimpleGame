@@ -3,9 +3,8 @@ import random
 def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed_upgrades, player_size_upgrades, bullet_damage_upgrades, bullet_type='PIERCE'):
     # 기본 공통 옵션
     pool = [
-        {"ids": [1], "text_kor": "[1] 관통력 +1", "text_eng": "[1] Pierce +1"},
         {"ids": [3], "text_kor": "[3] 공격 간격 -10%", "text_eng": "[3] Attack Interval -10%"},
-        {"ids": [4], "text_kor": "[4] 발사 방향 +1", "text_eng": "[4] Fire Direction +1"},
+        {"ids": [4], "text_kor": "[4] 발사 방향 +1", "text_eng": "[4] Fire Direction +1%"},
         {"ids": [5], "text_kor": "[5] 최대 체력 +10", "text_eng": "[5] Max HP +10"},
         {"ids": [6], "text_kor": "[6] 초당 체력 회복 +1", "text_eng": "[6] HP Regen +1/s"},
         {"ids": [8], "text_kor": "[8] 획득 범위 +10%", "text_eng": "[8] Magnet Radius +10%"},
@@ -13,10 +12,18 @@ def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed
         {"ids": [12], "text_kor": "[12] 적 이동 속도 -10%", "text_eng": "[12] Enemy Speed -10%"},
     ]
 
-    # [수정] 탄 종류에 따른 발사 개수 선택지 및 텍스트 변경
+    # 탄종별 관통력(지속시간) 선택지 텍스트 분기
+    if bullet_type == 'LASER':
+        pool.append({"ids": [1], "text_kor": "[1] 레이저 지속시간 +1.5s", "text_eng": "[1] Laser Duration +1.5s"})
+    else:
+        pool.append({"ids": [1], "text_kor": "[1] 관통력 +1", "text_eng": "[1] Pierce +1"})
+
+    # 탄종별 발사 개수 선택지 분기
     if bullet_count_upgrades < 5:
         if bullet_type == 'EXPLOSIVE':
             pool.append({"ids": [2], "text_kor": "[2] 폭발탄 발사 개수 +1", "text_eng": "[2] Explosive Bullet Count +1"})
+        elif bullet_type == 'LASER':
+            pool.append({"ids": [2], "text_kor": "[2] 레이저 줄기 +1", "text_eng": "[2] Laser Beam +1"})
         else:
             pool.append({"ids": [2], "text_kor": "[2] 관통탄 발사 개수 +2", "text_eng": "[2] Pierce Bullet Count +2"})
 
