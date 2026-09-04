@@ -14,7 +14,7 @@ def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed
 
     # 탄종별 관통력(지속시간) 선택지 텍스트 분기
     if bullet_type == 'LASER':
-        pool.append({"ids": [1], "text_kor": "[1] 레이저 지속시간 +1.5s", "text_eng": "[1] Laser Duration +1.5s"})
+        pool.append({"ids": [1], "text_kor": "[1] 레이저 지속시간 +0.5s", "text_eng": "[1] Laser Duration +0.5s"})
     else:
         pool.append({"ids": [1], "text_kor": "[1] 관통력 +1", "text_eng": "[1] Pierce +1"})
 
