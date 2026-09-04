@@ -139,7 +139,7 @@ class GameState:
             self.shoot_timer = 0.0
             sorted_e = sorted(self.enemies, key=lambda e: (e["rect"].centerx - px_c)**2 + (e["rect"].centery - py_c)**2)[:self.fire_directions]
 
-            # 1) 레이저탄 처리
+            # 1) 레이저탄(LASER) 발사 처리
             if self.bullet_type == 'LASER':
                 base_duration = 2.0 + (self.pierce_count - 1) * 1.5
                 for target in sorted_e:
@@ -152,18 +152,26 @@ class GameState:
                             "duration": base_duration,
                             "max_duration": base_duration,
                             "damage": 1 + self.bonus_damage,
-                            "hit_cooldowns": {},  # 적 ID별 다단히트 쿨다운 (0.1초 마다 데미지)
+                            "hit_cooldowns": {},
                             "can_split": True
                         })
-            # 2) 일반 관통탄/폭발탄 처리
+
+            # 2) 일반 관통탄(PIERCE) 및 폭발탄(EXPLOSIVE) 발사 처리 (LASER일 때는 실행되지 않음)
             else:
                 for target in sorted_e:
                     base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
                     for b_idx in range(self.bullet_count):
                         angle = base_angle + (b_idx - (self.bullet_count - 1) / 2) * 0.15
                         base_dmg = 1 + self.pierce_count + self.bonus_damage
-                        self.bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * self.bullet_speed, "vy": math.sin(angle) * self.bullet_speed, "pierce": self.pierce_count, "damage": base_dmg, "can_split": True, "hit_enemies": set()})
-
+                        self.bullets.append({
+                            "rect": pygame.Rect(px_c, py_c, 8, 8),
+                            "vx": math.cos(angle) * self.bullet_speed,
+                            "vy": math.sin(angle) * self.bullet_speed,
+                            "pierce": self.pierce_count,
+                            "damage": base_dmg,
+                            "can_split": True,
+                            "hit_enemies": set()
+                        })
         # --- 레이저 업데이트 및 충돌 검사 ---
         l_idx = 0
         while l_idx < len(self.lasers):
