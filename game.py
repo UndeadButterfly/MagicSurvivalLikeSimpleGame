@@ -141,7 +141,7 @@ class GameState:
 
             # 1) 레이저탄(LASER) 발사 처리
             if self.bullet_type == 'LASER':
-                base_duration = 2.0 + (self.pierce_count - 1) * 1.5
+                base_duration = 1.0 + (self.pierce_count - 1) * 0.5
                 for target in sorted_e:
                     base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
                     for b_idx in range(self.bullet_count):
