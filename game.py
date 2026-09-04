@@ -58,10 +58,12 @@ class GameState:
             self.is_upgrading = True
             for loot in self.loot_items:
                 loot["magnetized"] = True
+            
+            # [수정] bullet_type 전달하여 맞춤 선택지 생성
             self.upgrade_options = generate_upgrade_options(
                 self.bullet_count_upgrades, self.split_upgrades,
                 self.bullet_speed_upgrades, self.player_size_upgrades,
-                self.bullet_damage_upgrades
+                self.bullet_damage_upgrades, self.bullet_type
             )
             self.selected_option_index = 0
 
@@ -72,7 +74,10 @@ class GameState:
     def apply_single_upgrade(self, upgrade_id):
         if upgrade_id == 1: self.pierce_count += 1
         elif upgrade_id == 2 and self.bullet_count_upgrades < 5:
-            self.bullet_count += 2; self.bullet_count_upgrades += 1
+            # [수정] 폭발탄은 증가량이 절반 (+1), 관통탄은 (+2)
+            inc = 1 if self.bullet_type == 'EXPLOSIVE' else 2
+            self.bullet_count += inc
+            self.bullet_count_upgrades += 1
         elif upgrade_id == 3: self.shoot_interval *= 0.9
         elif upgrade_id == 4: self.fire_directions += 1
         elif upgrade_id == 5: self.max_hp += 10; self.player_hp += 10
@@ -240,17 +245,16 @@ class GameState:
                     self.loot_items.pop(i); continue
             i += 1
 
-        # 발사
+        # 발사 처리 [수정]: 절반 나눗셈 없이 bullet_count 그대로 생성
         self.shoot_timer += dt
         if self.shoot_timer >= self.shoot_interval and self.enemies:
             self.shoot_timer = 0.0
             sorted_e = sorted(self.enemies, key=lambda e: (e["rect"].centerx - px_c)**2 + (e["rect"].centery - py_c)**2)[:self.fire_directions]
-            active_bc = max(1, self.bullet_count // 2) if self.bullet_type == 'EXPLOSIVE' else self.bullet_count
 
             for target in sorted_e:
                 base_angle = math.atan2(target["rect"].centery - py_c, target["rect"].centerx - px_c)
-                for b_idx in range(active_bc):
-                    angle = base_angle + (b_idx - (active_bc - 1) / 2) * 0.15
+                for b_idx in range(self.bullet_count):
+                    angle = base_angle + (b_idx - (self.bullet_count - 1) / 2) * 0.15
                     base_dmg = 1 + self.pierce_count + self.bonus_damage
                     self.bullets.append({"rect": pygame.Rect(px_c, py_c, 8, 8), "vx": math.cos(angle) * self.bullet_speed, "vy": math.sin(angle) * self.bullet_speed, "pierce": self.pierce_count, "damage": base_dmg, "can_split": True, "hit_enemies": set()})
 
@@ -329,7 +333,6 @@ class GameState:
             ring["timer"] -= dt; ring["radius"] += 80 * dt
 
     def get_stats_dict(self):
-        disp_bc = max(1, self.bullet_count // 2) if self.bullet_type == 'EXPLOSIVE' else self.bullet_count
         current_exp_radius = self.base_explosion_radius * (1.0 + 0.10 * self.pierce_count)
         return {
             "bullet_type": self.bullet_type,
@@ -341,7 +344,7 @@ class GameState:
             "player_h": self.player.height,
             "shoot_interval": self.shoot_interval,
             "fire_directions": self.fire_directions,
-            "disp_bc": disp_bc,
+            "disp_bc": self.bullet_count,  # [수정] 스탯 표시도 현재 개수 그대로 표기
             "pierce_count": self.pierce_count,
             "bonus_damage": self.bonus_damage,
             "split_count": self.split_count,

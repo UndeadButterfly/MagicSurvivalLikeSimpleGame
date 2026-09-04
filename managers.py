@@ -1,6 +1,7 @@
 import random
 
-def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed_upgrades, player_size_upgrades, bullet_damage_upgrades):
+def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed_upgrades, player_size_upgrades, bullet_damage_upgrades, bullet_type='PIERCE'):
+    # 기본 공통 옵션
     pool = [
         {"ids": [1], "text_kor": "[1] 관통력 +1", "text_eng": "[1] Pierce +1"},
         {"ids": [3], "text_kor": "[3] 공격 간격 -10%", "text_eng": "[3] Attack Interval -10%"},
@@ -12,8 +13,12 @@ def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed
         {"ids": [12], "text_kor": "[12] 적 이동 속도 -10%", "text_eng": "[12] Enemy Speed -10%"},
     ]
 
+    # [수정] 탄 종류에 따른 발사 개수 선택지 및 텍스트 변경
     if bullet_count_upgrades < 5:
-        pool.append({"ids": [2], "text_kor": "[2] 발사 개수 +2", "text_eng": "[2] Bullet Count +2"})
+        if bullet_type == 'EXPLOSIVE':
+            pool.append({"ids": [2], "text_kor": "[2] 폭발탄 발사 개수 +1", "text_eng": "[2] Explosive Bullet Count +1"})
+        else:
+            pool.append({"ids": [2], "text_kor": "[2] 관통탄 발사 개수 +2", "text_eng": "[2] Pierce Bullet Count +2"})
 
     if split_upgrades < 4:
         pool.append({"ids": [11], "text_kor": "[11] 적중 시 분열 +1", "text_eng": "[11] Split on Hit +1"})
@@ -24,7 +29,6 @@ def generate_upgrade_options(bullet_count_upgrades, split_upgrades, bullet_speed
     if player_size_upgrades < 2:
         pool.append({"ids": [14], "text_kor": "[14] 캐릭터 크기 -20%", "text_eng": "[14] Player Size -20%"})
 
-    # [신규] 투사체 공격력 +1 (최대 4회)
     if bullet_damage_upgrades < 4:
         pool.append({"ids": [15], "text_kor": "[15] 투사체 공격력 +1", "text_eng": "[15] Bullet Damage +1"})
 
