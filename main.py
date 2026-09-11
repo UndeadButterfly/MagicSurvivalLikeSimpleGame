@@ -44,6 +44,8 @@ while running:
                     game.bullet_type = 'EXPLOSIVE'
                 elif event.key in (pygame.K_3, pygame.K_HASH):
                     game.bullet_type = 'LASER'
+                elif event.key in (pygame.K_4, pygame.K_DOLLAR):
+                    game.bullet_type = 'SATELLITE'
 
             if game.is_upgrading and not game.is_game_over:
                 if event.key == pygame.K_UP:
@@ -59,6 +61,22 @@ while running:
 
     # 렌더링
     screen.fill((30, 30, 30))
+
+    if game.bullet_type == 'SATELLITE':
+        px_c, py_c = game.player.centerx, game.player.centery
+        total_satellites = game.bullet_count + (game.fire_directions - 1)
+        orbit_radius = 80.0 + (game.fire_directions - 1) * 15.0
+        sat_size = 12 + (game.pierce_count - 1) * 3
+
+        # 궤도선
+        pygame.draw.circle(screen, (80, 80, 120), (px_c, py_c), int(orbit_radius), 1)
+
+        # 위성 보체
+        for i in range(total_satellites):
+            angle = game.satellite_angle + (2 * math.pi / total_satellites) * i
+            sat_x = int(px_c + math.cos(angle) * orbit_radius)
+            sat_y = int(py_c + math.sin(angle) * orbit_radius)
+            pygame.draw.circle(screen, (0, 255, 150), (sat_x, sat_y), sat_size // 2)
 
     # [신규] 레이저 렌더링
     for laser in game.lasers:

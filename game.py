@@ -8,6 +8,7 @@ from managers import generate_upgrade_options
 class GameState:
     def __init__(self):
         self.rankings = config.load_rankings()
+        self.satellite_angle = 0.0  # 회전 각도
         self.reset()
 
     def reset(self):
@@ -132,6 +133,52 @@ class GameState:
             self.player.clamp_ip(pygame.Rect(0, 0, config.GAME_WIDTH, config.SCREEN_HEIGHT))
 
         px_c, py_c = self.player.centerx, self.player.centery
+
+        # --- 위성탄 로직 ---
+        if self.bullet_type == 'SATELLITE':
+            # 1. 속도 스탯 기반 회전
+            rot_speed = (self.bullet_speed / 100.0) * 2.0
+            self.satellite_angle = (self.satellite_angle + rot_speed * dt) % (2 * math.pi)
+
+            total_satellites = self.bullet_count + (self.fire_directions - 1)
+            orbit_radius = 80.0 + (self.fire_directions - 1) * 15.0
+            sat_size = 12 + (self.pierce_count - 1) * 3
+            hit_cooldown_time = max(0.1, self.shoot_interval * 0.5)
+
+            for i in range(total_satellites):
+                angle = self.satellite_angle + (2 * math.pi / total_satellites) * i
+                sat_x = px_c + math.cos(angle) * orbit_radius
+                sat_y = py_c + math.sin(angle) * orbit_radius
+                sat_rect = pygame.Rect(sat_x - sat_size//2, sat_y - sat_size//2, sat_size, sat_size)
+
+                # 충돌 검사
+                for enemy in self.enemies:
+                    if sat_rect.colliderect(enemy["rect"]):
+                        eid = id(enemy["rect"])
+                        # 쿨다운 확인 후 피해
+                        if not hasattr(self, 'sat_hit_cd'): self.sat_hit_cd = {}
+                        if self.sat_hit_cd.get(eid, 0) <= 0:
+                            self.sat_hit_cd[eid] = hit_cooldown_time
+                            enemy["hp"] -= (1 + self.bonus_damage)
+                            update_enemy_size(enemy)
+
+                            # 분열 스탯 적용: 작은 파편 발사
+                            if self.split_count > 0:
+                                for s in range(self.split_count):
+                                    sp_angle = random.uniform(0, 2 * math.pi)
+                                    self.bullets.append({
+                                        "rect": pygame.Rect(sat_x, sat_y, 4, 4),
+                                        "vx": math.cos(sp_angle) * 200,
+                                        "vy": math.sin(sp_angle) * 200,
+                                        "pierce": 1, "damage": 1,
+                                        "can_split": False, "hit_enemies": set()
+                                    })
+
+            # 위성 쿨다운 차감
+            if hasattr(self, 'sat_hit_cd'):
+                for k in list(self.sat_hit_cd.keys()):
+                    self.sat_hit_cd[k] -= dt
+                    if self.sat_hit_cd[k] <= 0: del self.sat_hit_cd[k]
 
         # --- 레이저 발사 로직 ---
         self.shoot_timer += dt
